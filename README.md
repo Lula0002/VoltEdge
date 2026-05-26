@@ -101,21 +101,24 @@ Swagger at: `http://localhost:8000/docs`
 **Purpose:** Manages a charging session as a **state machine**.
 
 | Endpoint | Description |
-|---|---|
+|---|---|---|
 | `GET /sessions/health` | Health check |
 | `POST /sessions/start` | Create new session → status: `Created` |
 | `POST /sessions/{id}/authorize` | Authorize → status: `Authorized` |
 | `POST /sessions/{id}/start-charging` | Start charging → status: `Charging` |
 | `POST /sessions/{id}/complete` | Complete → status: `Completed` → emit `SessionValidated` |
+| `POST /sessions/{id}/rate` | Calculate price → status: `Rated` |
+| `POST /sessions/{id}/invoice` | Generate invoice → status: `Invoiced` |
 | `GET /sessions/{id}` | Get session data |
 
-**State machine:** `Created → Authorized → Charging → Completed`
+**State machine:** `Created → Authorized → Charging → Completed → Rated → Invoiced`  
+*(Session service owns all 6 states; billing service is a pure domain service — no DB writes)*
 
 ---
 
-#### `src/billing_service/billing_api.py` — Billing Service (Generic)
+#### `src/billing_service/billing_api.py` — Billing Service (Generic / Pure Domain Service)
 
-**Purpose:** Price calculation (rating) and invoice generation.
+**Purpose:** Price calculation (rating) and invoice generation — no side effects, no DB writes.
 
 | Endpoint | Description |
 |---|---|
@@ -246,17 +249,17 @@ POST /sessions/{session_id}/complete
 {"energy_delivered": 25.5, "duration_minutes": 60}
 ```
 
-**Step 5 — Rate:**
-```json
-POST /billing/rate
-{"session_id": "{SESSION_ID}", "energy_delivered": 25.5, "duration_minutes": 60, ...}
+**Step 5 — Rate (transition to Rated):**
 ```
+POST /sessions/{session_id}/rate
+```
+No body required — reads meter data from the session automatically.
 
-**Step 6 — Invoice:**
-```json
-POST /billing/invoice
-{"session_id": "{SESSION_ID}", "total_cost": 92.50, "currency": "DKK", ...}
+**Step 6 — Invoice (transition to Invoiced):**
 ```
+POST /sessions/{session_id}/invoice
+```
+No body required — reads total_cost from the session automatically.
 
 ### Test with curl
 

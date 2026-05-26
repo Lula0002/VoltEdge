@@ -16,7 +16,12 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
-    description="Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated\n\nQuick demo: POST /auto-flow runs the entire Happy Path in a single call. Step-by-step: Click each endpoint below to walk through the flow manually. Persistence: All sessions survive server restart (SQLite).",
+    description=(
+        "Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated\n\n"
+        "**Quick demo**: `POST /auto-flow` runs the entire Happy Path in a single call.\n"
+        "**Step-by-step**: Click each endpoint below to walk through the flow manually.\n"
+        "**Persistence**: All sessions survive server restart (SQLite)."
+    ),
     version="1.0.1",
     docs_url="/docs",
     redoc_url="/redoc",

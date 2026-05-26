@@ -12,14 +12,100 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
-    description="Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated",
-    version="1.0.0",
+    description="Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated\n\nQuick demo: POST /auto-flow runs the entire Happy Path in a single call. Step-by-step: Click each endpoint below to walk through the flow manually. Persistence: All sessions survive server restart (SQLite).",
+    version="1.0.1",
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+class AutoFlowRequest(BaseModel):
+    charger_id: str = Field(default="charger-1")
+    contract_id: str = Field(default="contract-1")
+    energy_delivered: float = Field(default=25.5)
+    duration_minutes: int = Field(default=60)
+
+
+@app.post("/auto-flow", tags=["auto-flow"])
+async def auto_flow(req: AutoFlowRequest):
+    """Run the complete Happy Path automatically in a single call.
+
+    Steps:
+    1. Create session (Created)
+    2. Authorize (Authorized)
+    3. Start charging (Charging)
+    4. Complete with meter data (Completed)
+    5. Calculate price (Rated)
+    6. Generate invoice (Invoiced)
+
+    Returns the full trace from start to finish.
+    """
+    from session_service.session_api import (
+        start_session,
+        authorize_session,
+        start_charging,
+        complete_session,
+        StartSessionRequest,
+        CompleteSessionRequest,
+    )
+    from billing_service.billing_api import (
+        rate_session,
+        create_invoice,
+        RateRequest,
+        InvoiceRequest,
+    )
+
+    # Step 1: Start session
+    started = await start_session(StartSessionRequest(
+        charger_id=req.charger_id,
+        contract_id=req.contract_id,
+    ))
+    session_id = started.session_id
+
+    # Step 2: Authorize
+    authorized = await authorize_session(session_id)
+
+    # Step 3: Start charging
+    charging = await start_charging(session_id)
+
+    # Step 4: Complete with meter data
+    validated = await complete_session(
+        session_id,
+        CompleteSessionRequest(
+            energy_delivered=req.energy_delivered,
+            duration_minutes=req.duration_minutes,
+        ),
+    )
+
+    # Step 5: Calculate price
+    rated = await rate_session(RateRequest(
+        session_id=session_id,
+        energy_delivered=req.energy_delivered,
+        duration_minutes=req.duration_minutes,
+        charger_id=req.charger_id,
+        contract_id=req.contract_id,
+    ))
+
+    # Step 6: Generate invoice
+    invoiced = await create_invoice(InvoiceRequest(
+        session_id=session_id,
+        total_cost=rated.total_cost,
+        currency="DKK",
+        breakdown=rated.breakdown,
+    ))
+
+    return {
+        "session_started": started.model_dump(),
+        "authorized": authorized,
+        "charging_started": charging,
+        "session_validated": validated.model_dump(),
+        "session_rated": rated.model_dump(),
+        "invoice_generated": invoiced.model_dump(),
+    }
 
 app.add_middleware(
     CORSMiddleware,

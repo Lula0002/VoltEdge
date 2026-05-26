@@ -24,6 +24,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 
 ```
 SessionStarted → SessionValidated → PriceCalculated → InvoiceGenerated
+```
 
 Each event represents a step in the billing chain:
 1. **SessionStarted** — A vehicle connects to a charger
@@ -70,27 +71,27 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 | `README.md` | Project documentation |
 | `MVP.md` | MVP definition |
 | `.gitignore` | Ignores `venv/`, `__pycache__/`, `.env`, `*.db`, etc. |
-| `requirements.txt` | Python dependencies |
+| `requirements.txt` | Root requirements (references `src/requirements.txt`) |
 
-### Python application
+### `src/` — Python application
 
-#### `main.py`
+#### `src/main.py`
 **Entry point.** Combines all 3 services into a single FastAPI app.  
 Run with: `uvicorn main:app --reload --port 8000`  
 Swagger at: `http://localhost:8000/docs`
 
-#### `shared/events.py`
+#### `src/shared/events.py`
 **Shared event models** used across all services:  
 `SessionStarted`, `SessionValidated`, `PriceCalculated`, `InvoiceGenerated`
 
-#### `shared/database.py`
+#### `src/shared/database.py`
 **Database helper** — creates and manages SQLite connection.  
 Creates `voltedge.db` automatically on startup.  
 Switches to PostgreSQL if `DATABASE_URL` is set.
 
 ---
 
-#### `session_service/session_api.py` — Session Service (Core)
+#### `src/session_service/session_api.py` — Session Service (Core)
 
 **Purpose:** Manages a charging session as a **state machine**.
 
@@ -107,7 +108,7 @@ Switches to PostgreSQL if `DATABASE_URL` is set.
 
 ---
 
-#### `billing_service/billing_api.py` — Billing Service (Generic)
+#### `src/billing_service/billing_api.py` — Billing Service (Generic)
 
 **Purpose:** Price calculation (rating) and invoice generation.
 
@@ -124,7 +125,7 @@ Switches to PostgreSQL if `DATABASE_URL` is set.
 
 ---
 
-#### `analytics_service/analytics_api.py` — Analytics Service (Supporting)
+#### `src/analytics_service/analytics_api.py` — Analytics Service (Supporting)
 
 **Purpose:** ML anomaly detection using linear regression.
 
@@ -139,7 +140,7 @@ Sessions deviating >40% from expected are flagged as **anomalies**.
 
 ---
 
-### `requirements.txt`
+### `src/requirements.txt`
 
 **Dependencies:**
 - `fastapi` + `uvicorn` (web server)
@@ -180,6 +181,7 @@ python -m venv venv
 # source venv/bin/activate  # Mac / Linux
 
 # 4. Install dependencies
+cd src
 pip install -r requirements.txt
 
 # 5. Start the server (all 3 services in one app)
@@ -195,17 +197,17 @@ That's it — the SQLite database is created automatically on first request.
 
 ```bash
 # Terminal 1: session-service
-cd session_service
+cd src/session_service
 pip install -r requirements.txt
 uvicorn session_api:app --reload --port 8000
 
 # Terminal 2: billing-service
-cd billing_service
+cd src/billing_service
 pip install -r requirements.txt
 uvicorn billing_api:app --reload --port 8001
 
 # Terminal 3: analytics-service
-cd analytics_service
+cd src/analytics_service
 pip install -r requirements.txt
 uvicorn analytics_api:app --reload --port 8002
 ```
@@ -361,7 +363,7 @@ If the deployment fails, the previous version remains untouched on Azure.
 ### Setup & Installation
 
 ```bash
-pip install -r requirements.txt       # Install all Python packages
+pip install -r src/requirements.txt   # Install all Python packages
 python -m venv venv                    # Create virtual environment
 .\venv\Scripts\Activate                # Activate venv (Windows)
 ```
@@ -369,9 +371,10 @@ python -m venv venv                    # Create virtual environment
 ### Run server
 
 ```bash
-uvicorn main:app --reload --port 8000
+cd src && uvicorn main:app --reload --port 8000
 ```
 
+- `cd src` — enter source directory
 - `uvicorn main:app` — start server with `app` from `main.py`
 - `--reload` — auto-restart on file changes
 - `--port 8000` — listen on port 8000
@@ -401,7 +404,7 @@ git status                                   # Show working tree status
 
 Set in Azure Portal → Configuration → General Settings:
 ```
-uvicorn main:app --host 0.0.0.0 --port 8000
+cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -409,25 +412,27 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ## Project Structure
 
 ```
-├── main.py                           # Combined FastAPI app (entry point)
-├── requirements.txt                  # Python dependencies
-├── session_service/                  # Core — ChargingSession aggregate
-│   ├── session_api.py                # FastAPI endpoints + state machine
-│   ├── .env.example
-│   └── __init__.py
-├── billing_service/                  # Generic — Tariff & Invoice
-│   ├── billing_api.py                # Rating + invoice endpoints
-│   ├── .env.example
-│   └── __init__.py
-├── analytics_service/                # Supporting — ML anomaly detection
-│   ├── analytics_api.py              # Linear regression model + endpoints
-│   ├── .env.example
-│   └── __init__.py
-├── shared/
-│   ├── events.py                     # Shared event models
-│   ├── database.py                   # SQLite database helper
-│   └── __init__.py
+├── src/
+│   ├── main.py                       # Combined FastAPI app (entry point)
+│   ├── requirements.txt              # Python dependencies
+│   ├── session_service/              # Core — ChargingSession aggregate
+│   │   ├── session_api.py            # FastAPI endpoints + state machine
+│   │   ├── .env.example
+│   │   └── __init__.py
+│   ├── billing_service/              # Generic — Tariff & Invoice
+│   │   ├── billing_api.py            # Rating + invoice endpoints
+│   │   ├── .env.example
+│   │   └── __init__.py
+│   ├── analytics_service/            # Supporting — ML anomaly detection
+│   │   ├── analytics_api.py          # Linear regression model + endpoints
+│   │   ├── .env.example
+│   │   └── __init__.py
+│   └── shared/
+│       ├── events.py                 # Shared event models
+│       ├── database.py               # SQLite database helper
+│       └── __init__.py
 ├── .github/workflows/                # GitHub Actions CI/CD
+├── requirements.txt                  # Root requirements (references src/)
 ├── MVP.md                            # MVP definition
 └── README.md
 ```
@@ -436,7 +441,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## Secrets Management
 
-- `*/.env.example` — templates for local environment variables
+- `src/*/.env.example` — templates for local environment variables
 - GitHub Secrets: publish profile credentials configured via Azure Deployment Center
 - No secrets in source code — only `.env.example` templates
 - Database is created automatically as SQLite — no credentials needed for development

@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 # Default path for SQLite database file
-DEFAULT_DB_PATH = Path(__file__).parent / "voltedge.db"
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "voltedge.db"
 
 
 def get_db_path():

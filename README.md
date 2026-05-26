@@ -100,18 +100,18 @@ Swagger at: `http://localhost:8000/docs`
 **Purpose:** Manages a charging session as a **state machine**.
 
 | Endpoint | Description |
-|---|---|---|
+|---|---|
 | `GET /sessions/health` | Health check |
 | `POST /sessions/start` | Create new session → status: `Created` |
 | `POST /sessions/{id}/authorize` | Authorize → status: `Authorized` |
 | `POST /sessions/{id}/start-charging` | Start charging → status: `Charging` |
-| `POST /sessions/{id}/complete` | Complete → status: `Completed` → emit `SessionValidated` |
-| `POST /sessions/{id}/rate` | Calculate price (calls Billing) → status: `Rated` (mirrored) |
-| `POST /sessions/{id}/invoice` | Generate invoice (calls Billing) → status: `Invoiced` (mirrored) |
+| `POST /sessions/{id}/complete` | Complete → status: `Completed` |
+| `POST /sessions/{id}/rate` | Calculate price → status: `Rated` |
+| `POST /sessions/{id}/invoice` | Generate invoice → status: `Invoiced` |
 | `GET /sessions/{id}` | Get session data |
 
-**State machine:** `Created → Authorized → Charging → Completed → Rated (mirrored) → Invoiced (mirrored)`  
-*(Session service tracks state; Billing service is the authoritative source for Invoice data)*
+**State machine:** `Created → Authorized → Charging → Completed → Rated → Invoiced`  
+*(Note: Rated/Invoiced statuses are mirrored from Billing Context. Billing is the authoritative source for invoice data.)*
 
 
 ---
@@ -159,11 +159,16 @@ Sessions deviating >40% from expected are flagged as **anomalies**.
 
 ### Environment variables (`.env.example`)
 
-| File | Variables |
-|---|---|---|
-| `session_service/.env.example` | `DATABASE_URL` — MySQL connection (optional, e.g. `mysql://user:password@host:3306/voltedge`) |
-| `billing_service/.env.example` | `ENERGY_RATE`, `PARKING_RATE`, `PARKING_FREE_MINUTES` |
-| `analytics_service/.env.example` | `ANOMALY_THRESHOLD` — anomaly threshold percentage |
+- **`session_service/.env.example`**
+  - `DATABASE_URL`: MySQL connection string (optional).
+
+- **`billing_service/.env.example`**
+  - `ENERGY_RATE`: DKK per kWh.
+  - `PARKING_RATE`: DKK per minute.
+  - `PARKING_FREE_MINUTES`: Free parking minutes.
+
+- **`analytics_service/.env.example`**
+  - `ANOMALY_THRESHOLD`: Anomaly threshold percentage.
 
 ---
 

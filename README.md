@@ -192,7 +192,7 @@ uvicorn main:app --reload --port 8000
 #    http://localhost:8000/docs
 ```
 
-That's it — the SQLite database (`voltedge.db`) is created automatically on first request.  
+That's it — the SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.  
 For MySQL, set `DATABASE_URL=mysql://user:password@host:3306/voltedge` in your environment.
 
 ### Option B — Run services individually
@@ -338,7 +338,7 @@ The app uses **MySQL** when deployed on Azure via the `DATABASE_URL` environment
 ### Local development
 
 No setup needed — SQLite is used automatically when `DATABASE_URL` is not set.
-The database file `voltedge.db` is created in `src/` on first request.
+The database file `voltedge.db` is created in `src/` automatically on app startup via `init_db()`.
 
 ---
 
@@ -359,6 +359,14 @@ GitHub Actions workflow (`.github/workflows/main_voltedge-app.yml`):
 ### Deploy job
 1. **Download artifact** from build job
 2. **Deploy to Azure Web App** using publish profile credentials
+
+### Database creation (automatic)
+The database is **not** provisioned by the CI/CD pipeline itself — instead, it is created **at application startup** via the `init_db()` function in `src/shared/database.py`. This means:
+
+- **SQLite** (local dev): `voltedge.db` is created automatically in `src/` on first request
+- **MySQL** (production via `DATABASE_URL`): The `CREATE TABLE IF NOT EXISTS` statements run on app start, ensuring tables exist without manual setup
+
+This approach makes the database fully automated as part of the deployment — no separate provisioning step needed.
 
 ### Rollback
 If the deployment fails, the previous version remains untouched on Azure.

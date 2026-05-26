@@ -1,7 +1,12 @@
 """Tests for Billing Service — Tariff rating and invoice generation"""
 
+import os
 import sys
+import tempfile
 from pathlib import Path
+
+# Use a temporary database for tests
+os.environ["VOLTEDGE_DB_PATH"] = os.path.join(tempfile.gettempdir(), "voltedge_test.db")
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 

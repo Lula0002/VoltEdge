@@ -26,6 +26,9 @@ Thumbs.db
 # OpenWork (not part of MVP)
 .opencode/
 
+# SQLite database (created at runtime)
+*.db
+
 # Azure / deployment artifacts
 *.zip
 *.tar.gz

@@ -1,7 +1,12 @@
 """Tests for Session Service — ChargingSession state machine"""
 
+import os
 import sys
+import tempfile
 from pathlib import Path
+
+# Use a temporary database for tests
+os.environ["VOLTEDGE_DB_PATH"] = os.path.join(tempfile.gettempdir(), "voltedge_test.db")
 
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

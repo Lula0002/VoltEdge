@@ -16,7 +16,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      actions: read
 
     steps:
       - name: Checkout source code

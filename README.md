@@ -45,9 +45,9 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 | **analytics-service** | Supporting | `/analytics/*` | ML anomaly detection (linear regression) |
 
 > **DDD note — Bounded Context boundaries:**  
-> Session service owns the full session state machine (`Created → Authorized → Charging → Completed → Rated → Invoiced`).  
-> Billing service is a **pure domain service** — it calculates prices and generates invoice lines but **never writes to session state**.  
-> State transitions to `Rated` and `Invoiced` are handled by session service endpoints, ensuring the `ChargingSession` aggregate has a single owner.
+> Session service owns the `ChargingSession` aggregate and its state machine (`Created → Authorized → Charging → Completed`).  
+> Billing service is a **Bounded Context** that owns the `Invoice` aggregate. It handles its own state (`Generated`) and persists invoice data independently.  
+> Session service mirrors the `Rated` and `Invoiced` statuses for readability, but the Billing service is the **authoritative source** for all invoicing data.
 
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
@@ -106,12 +106,13 @@ Swagger at: `http://localhost:8000/docs`
 | `POST /sessions/{id}/authorize` | Authorize → status: `Authorized` |
 | `POST /sessions/{id}/start-charging` | Start charging → status: `Charging` |
 | `POST /sessions/{id}/complete` | Complete → status: `Completed` → emit `SessionValidated` |
-| `POST /sessions/{id}/rate` | Calculate price → status: `Rated` |
-| `POST /sessions/{id}/invoice` | Generate invoice → status: `Invoiced` |
+| `POST /sessions/{id}/rate` | Calculate price (calls Billing) → status: `Rated` (mirrored) |
+| `POST /sessions/{id}/invoice` | Generate invoice (calls Billing) → status: `Invoiced` (mirrored) |
 | `GET /sessions/{id}` | Get session data |
 
-**State machine:** `Created → Authorized → Charging → Completed → Rated → Invoiced`  
-*(Session service owns all 6 states; billing service is a pure domain service — no DB writes)*
+**State machine:** `Created → Authorized → Charging → Completed → Rated (mirrored) → Invoiced (mirrored)`  
+*(Session service tracks state; Billing service is the authoritative source for Invoice data)*
+
 
 ---
 

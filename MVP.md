@@ -5,7 +5,7 @@ Denne MVP realiserer en central del af VoltEdge Mobility A/S' arkitektur med fok
 
 ### Implementeringsstrategi (Happy Path):
 For at sikre en realistisk og stærk MVP, implementeres "Happy Path" fuldt ud:
-`SessionStarted` -> `SessionValidated` -> `PriceCalculated` -> `InvoiceLineGenerated`
+`SessionStarted` -> `SessionValidated` -> `SessionRated` -> `InvoiceLineGenerated`
 
 ### Strategisk vs. Teknisk Implementering:
 Vi anerkender et bevidst misforhold mellem strategisk vigtighed og implementeringsdybde:

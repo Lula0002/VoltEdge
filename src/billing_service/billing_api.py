@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from shared.events import SessionStatus, PriceCalculated, InvoiceLineGenerated
+from shared.events import SessionStatus, SessionRated, InvoiceLineGenerated
 from shared.database import get_connection, execute, init_db
 
 init_db()
@@ -35,7 +35,7 @@ PARKING_RATE = 0.50  # DKK per minute after 10 free minutes
 PARKING_FREE_MINUTES = 10
 
 
-@router.post("/rate", response_model=PriceCalculated)
+@router.post("/rate", response_model=SessionRated)
 async def rate_session(req: RateRequest):
     # Check session exists and is completed
     conn = get_connection()
@@ -78,7 +78,7 @@ async def rate_session(req: RateRequest):
     conn.commit()
     conn.close()
 
-    return PriceCalculated(
+    return SessionRated(
         session_id=req.session_id,
         total_cost=total_cost,
         currency="DKK",

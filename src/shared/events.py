@@ -44,7 +44,7 @@ class SessionValidated(BaseModel):
     timestamp: datetime
 
 
-class PriceCalculated(BaseModel):
+class SessionRated(BaseModel):
     session_id: str
     total_cost: float
     currency: str = "DKK"

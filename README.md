@@ -23,13 +23,13 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 ## Happy Path (4 steps)
 
 ```
-SessionStarted → SessionValidated → PriceCalculated → InvoiceLineGenerated
+SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated
 ```
 
 Each event represents a step in the billing chain:
 1. **SessionStarted** — A vehicle connects to a charger
 2. **SessionValidated** — Charging is completed with metered data
-3. **PriceCalculated** — Price is calculated based on tariff rules
+3. **SessionRated** — Price is calculated based on tariff rules
 4. **InvoiceLineGenerated** — An invoice line is generated
 
 ---
@@ -82,7 +82,7 @@ Swagger at: `http://localhost:8000/docs`
 
 #### `src/shared/events.py`
 **Shared event models** used across all services:  
-`SessionStarted`, `SessionValidated`, `PriceCalculated`, `InvoiceLineGenerated`
+`SessionStarted`, `SessionValidated`, `SessionRated`, `InvoiceLineGenerated`
 
 #### `src/shared/database.py`
 **Database helper** — MySQL (production) with SQLite fallback (local dev).  

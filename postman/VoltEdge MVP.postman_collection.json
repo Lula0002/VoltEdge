@@ -1,7 +1,7 @@
 {
 	"info": {
 		"name": "VoltEdge MVP",
-		"description": "Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineCreated\n\nBase URL variabel: sæt `base_url` til din Azure URL eller http://localhost:8000",
+		"description": "Happy Path: SessionStarted → SessionValidated → PriceCalculated → InvoiceGenerated\n\nBase URL variabel: sæt `base_url` til din Azure URL eller http://localhost:8000",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [

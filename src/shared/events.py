@@ -40,7 +40,7 @@ class SessionValidated(BaseModel):
     timestamp: datetime
 
 
-class SessionRated(BaseModel):
+class PriceCalculated(BaseModel):
     session_id: str
     total_cost: float
     currency: str = "DKK"
@@ -48,7 +48,7 @@ class SessionRated(BaseModel):
     timestamp: datetime
 
 
-class InvoiceLineCreated(BaseModel):
+class InvoiceGenerated(BaseModel):
     session_id: str
     invoice_id: str
     amount: float

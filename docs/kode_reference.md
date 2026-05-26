@@ -24,7 +24,7 @@ Swagger på: `http://localhost:8000/docs`
 
 ### `src/shared/events.py`
 **Fælles event-modeller** — bruges på tværs af alle services.  
-Indeholder: `SessionStarted`, `SessionValidated`, `SessionRated`, `InvoiceLineCreated`  
+Indeholder: `SessionStarted`, `SessionValidated`, `PriceCalculated`, `InvoiceGenerated`  
 (Det er vores "Happy Path" events)
 
 ---
@@ -59,7 +59,7 @@ Indeholder: `SessionStarted`, `SessionValidated`, `SessionRated`, `InvoiceLineCr
 |---|---|
 | `GET /billing/health` | Sundhedstjek |
 | `POST /billing/rate` | Beregner pris: 2,45 DKK/kWh + 0,50 DKK/min efter 10 min gratis |
-| `POST /billing/invoice` | Opretter faktura-linje → emit `InvoiceLineCreated` |
+| `POST /billing/invoice` | Opretter faktura-linje → emit `InvoiceGenerated` |
 
 **Prislogik (hardcoded i koden):**
 - Energi: 2,45 DKK/kWh

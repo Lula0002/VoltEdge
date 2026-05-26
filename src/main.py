@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
-    description="Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineCreated",
+    description="Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → PriceCalculated → InvoiceGenerated",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

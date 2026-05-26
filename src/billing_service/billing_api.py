@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from shared.events import SessionRated, InvoiceLineCreated
+from shared.events import PriceCalculated, InvoiceGenerated
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -37,7 +37,7 @@ async def health():
     return {"status": "healthy", "service": "billing-service"}
 
 
-@router.post("/rate", response_model=SessionRated)
+@router.post("/rate", response_model=PriceCalculated)
 async def rate_session(req: RateRequest):
     energy_cost = round(req.energy_delivered * ENERGY_RATE, 2)
     billable_parking = max(0, req.duration_minutes - PARKING_FREE_MINUTES)
@@ -52,7 +52,7 @@ async def rate_session(req: RateRequest):
         "billable_parking_minutes": billable_parking,
     }
 
-    return SessionRated(
+    return PriceCalculated(
         session_id=req.session_id,
         total_cost=total_cost,
         currency="DKK",
@@ -61,11 +61,11 @@ async def rate_session(req: RateRequest):
     )
 
 
-@router.post("/invoice", response_model=InvoiceLineCreated)
+@router.post("/invoice", response_model=InvoiceGenerated)
 async def create_invoice(req: InvoiceRequest):
     invoice_id = str(uuid.uuid4())
 
-    return InvoiceLineCreated(
+    return InvoiceGenerated(
         session_id=req.session_id,
         invoice_id=invoice_id,
         amount=req.total_cost,

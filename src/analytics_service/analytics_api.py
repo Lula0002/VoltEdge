@@ -61,6 +61,11 @@ model.fit(TRAIN_DURATIONS, TRAIN_ENERGY)
 
 
 
+@router.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "analytics-service"}
+
+
 @router.post("/predict")
 async def predict_energy(req: PredictRequest):
     duration = np.array([[req.duration_minutes]])

@@ -74,7 +74,6 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 | File | Purpose |
 |---|---|
 | `README.md` | Project documentation |
-| `MVP.md` | MVP definition |
 | `.gitignore` | Ignores `venv/`, `__pycache__/`, `.env`, `*.db`, etc. |
 | `requirements.txt` | Root requirements (references `src/requirements.txt`) |
 
@@ -456,7 +455,6 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │       └── __init__.py
 ├── .github/workflows/                # GitHub Actions CI/CD
 ├── requirements.txt                  # Root requirements (references src/)
-├── MVP.md                            # MVP definition
 └── README.md
 ```
 

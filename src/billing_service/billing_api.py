@@ -53,6 +53,11 @@ def calculate_price(energy_delivered: float, duration_minutes: int) -> tuple[flo
     return total_cost, energy_cost, parking_cost, breakdown
 
 
+@router.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "billing-service"}
+
+
 @router.post("/rate", response_model=SessionRated)
 async def rate_session(req: RateRequest):
     """Calculate price for a session (pure calculation, no side effects).

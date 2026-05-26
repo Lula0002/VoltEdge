@@ -48,6 +48,11 @@ def _session_from_row(row) -> ChargingSessionData:
 
 
 
+@router.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "session-service"}
+
+
 @router.post("/start", response_model=SessionStarted)
 async def start_session(req: StartSessionRequest):
     session_id = str(uuid.uuid4())

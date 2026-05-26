@@ -44,6 +44,11 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 | **billing-service** | Generic | `/billing/*` | Tariff rating + invoice line generation |
 | **analytics-service** | Supporting | `/analytics/*` | ML anomaly detection (linear regression) |
 
+> **DDD note — Bounded Context boundaries:**  
+> Session service owns the full session state machine (`Created → Authorized → Charging → Completed → Rated → Invoiced`).  
+> Billing service is a **pure domain service** — it calculates prices and generates invoice lines but **never writes to session state**.  
+> State transitions to `Rated` and `Invoiced` are handled by session service endpoints, ensuring the `ChargingSession` aggregate has a single owner.
+
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
 

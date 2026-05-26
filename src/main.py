@@ -49,14 +49,10 @@ async def auto_flow(req: AutoFlowRequest):
         authorize_session,
         start_charging,
         complete_session,
-        StartSessionRequest,
-        CompleteSessionRequest,
-    )
-    from billing_service.billing_api import (
         rate_session,
         create_invoice,
-        RateRequest,
-        InvoiceRequest,
+        StartSessionRequest,
+        CompleteSessionRequest,
     )
 
     # Step 1: Start session
@@ -81,22 +77,11 @@ async def auto_flow(req: AutoFlowRequest):
         ),
     )
 
-    # Step 5: Calculate price
-    rated = await rate_session(RateRequest(
-        session_id=session_id,
-        energy_delivered=req.energy_delivered,
-        duration_minutes=req.duration_minutes,
-        charger_id=req.charger_id,
-        contract_id=req.contract_id,
-    ))
+    # Step 5: Rate session (session service owns state transition)
+    rated = await rate_session(session_id)
 
-    # Step 6: Generate invoice
-    invoiced = await create_invoice(InvoiceRequest(
-        session_id=session_id,
-        total_cost=rated.total_cost,
-        currency="DKK",
-        breakdown=rated.breakdown,
-    ))
+    # Step 6: Generate invoice (session service owns state transition)
+    invoiced = await create_invoice(session_id)
 
     return {
         "session_started": started.model_dump(),

@@ -1,15 +1,17 @@
-"""Billing Service — Tariff rating and invoice line generation"""
+"""Billing Service — Tariff rating and invoice line generation (pure domain service)
+
+DDD note: This service is a pure domain service. It calculates prices and generates
+invoice lines but NEVER writes to session state. Session state transitions
+(Rated, Invoiced) are owned by the session service (ChargingSession aggregate).
+"""
 
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from shared.events import SessionStatus, SessionRated, InvoiceLineGenerated
-from shared.database import get_connection, execute, init_db
-
-init_db()
+from shared.events import SessionRated, InvoiceLineGenerated
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -35,32 +37,12 @@ PARKING_RATE = 0.50  # DKK per minute after 10 free minutes
 PARKING_FREE_MINUTES = 10
 
 
-@router.post("/rate", response_model=SessionRated)
-async def rate_session(req: RateRequest):
-    # Check session exists and is completed
-    conn = get_connection()
-    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (req.session_id,))
-    row = cursor.fetchone()
-    cursor.close()
-
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    session_status = row["status"]
-    if session_status != SessionStatus.COMPLETED.value:
-        conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot rate session in status '{session_status}'. Must be 'Completed'.",
-        )
-
-    # Calculate price
-    energy_cost = round(req.energy_delivered * ENERGY_RATE, 2)
-    billable_parking = max(0, req.duration_minutes - PARKING_FREE_MINUTES)
+def calculate_price(energy_delivered: float, duration_minutes: int) -> tuple[float, float, int, dict]:
+    """Pure calculation — no side effects, no DB access."""
+    energy_cost = round(energy_delivered * ENERGY_RATE, 2)
+    billable_parking = max(0, duration_minutes - PARKING_FREE_MINUTES)
     parking_cost = round(billable_parking * PARKING_RATE, 2)
     total_cost = round(energy_cost + parking_cost, 2)
-
     breakdown = {
         "energy": energy_cost,
         "parking": parking_cost,
@@ -68,15 +50,16 @@ async def rate_session(req: RateRequest):
         "parking_rate": PARKING_RATE,
         "billable_parking_minutes": billable_parking,
     }
+    return total_cost, energy_cost, parking_cost, breakdown
 
-    # Update session status to Rated and store total_cost
-    execute(
-        conn,
-        "UPDATE sessions SET status = ?, total_cost = ? WHERE session_id = ?",
-        (SessionStatus.RATED.value, total_cost, req.session_id),
-    )
-    conn.commit()
-    conn.close()
+
+@router.post("/rate", response_model=SessionRated)
+async def rate_session(req: RateRequest):
+    """Calculate price for a session (pure calculation, no side effects).
+    
+    Session state transition to 'Rated' must be handled by the session service.
+    """
+    total_cost, _, _, breakdown = calculate_price(req.energy_delivered, req.duration_minutes)
 
     return SessionRated(
         session_id=req.session_id,
@@ -89,34 +72,11 @@ async def rate_session(req: RateRequest):
 
 @router.post("/invoice", response_model=InvoiceLineGenerated)
 async def create_invoice(req: InvoiceRequest):
-    # Check session exists and is rated
-    conn = get_connection()
-    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (req.session_id,))
-    row = cursor.fetchone()
-    cursor.close()
-
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    session_status = row["status"]
-    if session_status != SessionStatus.RATED.value:
-        conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot invoice session in status '{session_status}'. Must be 'Rated'.",
-        )
-
+    """Generate an invoice line (pure generation, no side effects).
+    
+    Session state transition to 'Invoiced' must be handled by the session service.
+    """
     invoice_id = str(uuid.uuid4())
-
-    # Update session status to Invoiced and store invoice_id
-    execute(
-        conn,
-        "UPDATE sessions SET status = ?, invoice_id = ? WHERE session_id = ?",
-        (SessionStatus.INVOICED.value, invoice_id, req.session_id),
-    )
-    conn.commit()
-    conn.close()
 
     return InvoiceLineGenerated(
         session_id=req.session_id,

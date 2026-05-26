@@ -9,9 +9,12 @@ from shared.events import (
     ChargingSessionData,
     SessionStatus,
     SessionStarted,
+    SessionRated,
     SessionValidated,
+    InvoiceLineGenerated,
 )
 from shared.database import get_connection, execute, init_db
+from billing_service.billing_api import calculate_price
 
 # Initialize database tables on module load
 init_db()
@@ -149,6 +152,106 @@ async def complete_session(session_id: str, req: CompleteSessionRequest):
         contract_id=session.contract_id,
         energy_delivered=req.energy_delivered,
         duration_minutes=req.duration_minutes,
+        timestamp=now,
+    )
+
+
+@router.post("/{session_id}/rate", response_model=SessionRated)
+async def rate_session(session_id: str):
+    """Transition session from Completed to Rated.
+    
+    Reads meter data from the session, calculates price via billing domain service,
+    and updates session state — all within the ChargingSession aggregate boundary.
+    """
+    conn = get_connection()
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = _session_from_row(row)
+    if session.status != SessionStatus.COMPLETED:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot rate session in status '{session.status.value}'. Must be 'Completed'.",
+        )
+
+    if session.energy_delivered is None or session.duration_minutes is None:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Session missing meter data (energy_delivered, duration_minutes)")
+
+    # Pure calculation via billing domain service (no side effects)
+    total_cost, _, _, breakdown = calculate_price(
+        session.energy_delivered, session.duration_minutes
+    )
+
+    now = datetime.now(timezone.utc)
+
+    execute(
+        conn,
+        "UPDATE sessions SET status = ?, total_cost = ? WHERE session_id = ?",
+        (SessionStatus.RATED.value, total_cost, session_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return SessionRated(
+        session_id=session_id,
+        total_cost=total_cost,
+        currency="DKK",
+        breakdown=breakdown,
+        timestamp=now,
+    )
+
+
+@router.post("/{session_id}/invoice", response_model=InvoiceLineGenerated)
+async def create_invoice(session_id: str):
+    """Transition session from Rated to Invoiced.
+    
+    Generates an invoice line and updates session state — all within the
+    ChargingSession aggregate boundary.
+    """
+    conn = get_connection()
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = _session_from_row(row)
+    if session.status != SessionStatus.RATED:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot invoice session in status '{session.status.value}'. Must be 'Rated'.",
+        )
+
+    if session.total_cost is None:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Session has no total_cost. Must be rated first.")
+
+    invoice_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    execute(
+        conn,
+        "UPDATE sessions SET status = ?, invoice_id = ? WHERE session_id = ?",
+        (SessionStatus.INVOICED.value, invoice_id, session_id),
+    )
+    conn.commit()
+    conn.close()
+
+    return InvoiceLineGenerated(
+        session_id=session_id,
+        invoice_id=invoice_id,
+        amount=session.total_cost,
+        currency="DKK",
         timestamp=now,
     )
 

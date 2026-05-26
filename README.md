@@ -13,7 +13,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 6. [Test the Full Flow](#test-the-full-flow)
 7. [Testing with Postman](#testing-with-postman)
 8. [Run Unit Tests](#run-unit-tests)
-9. [Database Choice: SQLite](#database-choice-sqlite)
+9. [Database: MySQL / SQLite](#database-mysql-production--sqlite-local-dev)
 10. [CI/CD Pipeline](#cicd-pipeline)
 11. [Command Reference](#command-reference)
 12. [Secrets Management](#secrets-management)
@@ -54,7 +54,7 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 ## Tech Stack
 
 - **API:** Python (FastAPI) with Swagger/OpenAPI docs
-- **Database:** SQLite (persistent file-based, zero config)
+- **Database:** MySQL (production on Azure) / SQLite (local dev, auto-fallback)
 - **Cloud:** Microsoft Azure (App Service) — code-based deployment
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
 - **ML:** Scikit-learn Linear Regression (domain service)
@@ -85,9 +85,9 @@ Swagger at: `http://localhost:8000/docs`
 `SessionStarted`, `SessionValidated`, `PriceCalculated`, `InvoiceGenerated`
 
 #### `src/shared/database.py`
-**Database helper** — creates and manages SQLite connection.  
-Creates `voltedge.db` automatically on startup.  
-Switches to PostgreSQL if `DATABASE_URL` is set.
+**Database helper** — MySQL (production) with SQLite fallback (local dev).  
+- `DATABASE_URL=mysql://user:password@host:3306/voltedge` → MySQL  
+- `DATABASE_URL` unset → SQLite (`voltedge.db` created automatically on startup)
 
 ---
 
@@ -146,13 +146,14 @@ Sessions deviating >40% from expected are flagged as **anomalies**.
 - `fastapi` + `uvicorn` (web server)
 - `pydantic` (data validation)
 - `scikit-learn` + `numpy` (ML)
+- `mysql-connector-python` (MySQL driver for production)
 - `pytest` + `httpx` (testing)
 
 ### Environment variables (`.env.example`)
 
 | File | Variables |
-|---|---|
-| `session_service/.env.example` | `DATABASE_URL` — PostgreSQL connection (optional) |
+|---|---|---|
+| `session_service/.env.example` | `DATABASE_URL` — MySQL connection (optional, e.g. `mysql://user:password@host:3306/voltedge`) |
 | `billing_service/.env.example` | `ENERGY_RATE`, `PARKING_RATE`, `PARKING_FREE_MINUTES` |
 | `analytics_service/.env.example` | `ANOMALY_THRESHOLD` — anomaly threshold percentage |
 
@@ -191,7 +192,8 @@ uvicorn main:app --reload --port 8000
 #    http://localhost:8000/docs
 ```
 
-That's it — the SQLite database is created automatically on first request.
+That's it — the SQLite database (`voltedge.db`) is created automatically on first request.  
+For MySQL, set `DATABASE_URL=mysql://user:password@host:3306/voltedge` in your environment.
 
 ### Option B — Run services individually
 
@@ -308,30 +310,35 @@ All 19 tests across 3 services:
 
 ---
 
-## Database Choice: SQLite
+## Database: MySQL (Production) / SQLite (Local Dev)
 
-### Why SQLite instead of PostgreSQL?
+### Why MySQL for production?
 
-| Requirement | PostgreSQL | SQLite |
+| Requirement | MySQL (Azure Flexible Server) | SQLite (local dev) |
 |---|---|---|
-| **Setup complexity** | Requires server, credentials, network config | Zero setup — just a file |
-| **Cost** | ~165 DKK/month (Azure Flexible Server B1ms) | **Free** — no infrastructure |
-| **CI/CD integration** | Must provision server in pipeline | **Automatic** — created on app start |
-| **MVP suitability** | Overkill for demo/traceability | **Perfect fit** — lightweight, portable |
-| **Migration path** | Change `DATABASE_URL` env var | Same — just switch the URL |
+| **Persistence on Azure** | ✅ Data survives restarts/scaling | ❌ Ephemeral storage — data lost |
+| **Setup complexity** | Azure Portal wizard — 5 min | Zero setup — just a file |
+| **Cost** | **Free tier** (B1ms, 12 months) | **Free** |
+| **Concurrent access** | Multi-user, connection pooling | Single-writer only |
+| **Exam relevance** | Demonstrates real-world DB architecture | Quick local iteration |
 
-### Decision rationale
+### Decision
 
-The MVP focuses on demonstrating **traceability from telemetry to invoice** — not on database scalability. SQLite provides:
+The app uses **MySQL** when deployed on Azure via the `DATABASE_URL` environment variable, and falls back to **SQLite** automatically when developing locally (no config needed).
 
-1. **Persistence without infrastructure** — data survives restarts without managing a server
-2. **CI/CD ready** — database is created automatically when the app starts
-3. **Portable** — the `.db` file can be copied, backed up, or reset in seconds
-4. **Zero cost** — no Azure PostgreSQL costs during development or MVP demo
+### Production path — Azure Database for MySQL Flexible Server
 
-### Production path
+1. Go to **Azure Portal → Create a resource → Azure Database for MySQL Flexible Server**
+2. Select **Free tier** (B1ms, 1 vCore, 2 GB RAM, 32 GB storage)
+3. Create a database named `voltedge`
+4. In **Networking**, add firewall rule: "Allow public access from Azure services"
+5. Get the connection string: `mysql://user:password@server.mysql.database.azure.com:3306/voltedge`
+6. Set as `DATABASE_URL` in Azure Portal: **App Service → Settings → Environment variables**
 
-When VoltEdge moves beyond MVP, **no code changes are needed** — simply set the `DATABASE_URL` environment variable to a PostgreSQL connection string, and the app switches automatically.
+### Local development
+
+No setup needed — SQLite is used automatically when `DATABASE_URL` is not set.
+The database file `voltedge.db` is created in `src/` on first request.
 
 ---
 
@@ -429,7 +436,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   └── __init__.py
 │   └── shared/
 │       ├── events.py                 # Shared event models
-│       ├── database.py               # SQLite database helper
+│   ├── database.py               # MySQL / SQLite database helper
 │       └── __init__.py
 ├── .github/workflows/                # GitHub Actions CI/CD
 ├── requirements.txt                  # Root requirements (references src/)
@@ -444,7 +451,8 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 - `src/*/.env.example` — templates for local environment variables
 - GitHub Secrets: publish profile credentials configured via Azure Deployment Center
 - No secrets in source code — only `.env.example` templates
-- Database is created automatically as SQLite — no credentials needed for development
+- Database is created automatically as SQLite for local dev — no credentials needed
+- For production, set `DATABASE_URL=mysql://user:password@host:3306/voltedge` as an Azure App Setting
 
 ---
 

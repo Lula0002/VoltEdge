@@ -2,8 +2,6 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -13,7 +11,7 @@ from shared.events import (
     SessionStarted,
     SessionValidated,
 )
-from shared.database import get_connection, init_db
+from shared.database import get_connection, execute, init_db
 
 # Initialize database tables on module load
 init_db()
@@ -56,7 +54,8 @@ async def start_session(req: StartSessionRequest):
     now_str = now.isoformat()
 
     conn = get_connection()
-    conn.execute(
+    execute(
+        conn,
         "INSERT INTO sessions (session_id, charger_id, contract_id, status, start_time) VALUES (?, ?, ?, ?, ?)",
         (session_id, req.charger_id, req.contract_id, SessionStatus.CREATED.value, now_str),
     )
@@ -74,8 +73,10 @@ async def start_session(req: StartSessionRequest):
 @router.post("/{session_id}/authorize")
 async def authorize_session(session_id: str):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
-    
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
@@ -85,8 +86,8 @@ async def authorize_session(session_id: str):
         conn.close()
         raise HTTPException(status_code=400, detail=f"Cannot authorize in status {session.status.value}")
 
-    conn.execute("UPDATE sessions SET status = ? WHERE session_id = ?", 
-                 (SessionStatus.AUTHORIZED.value, session_id))
+    execute(conn, "UPDATE sessions SET status = ? WHERE session_id = ?",
+            (SessionStatus.AUTHORIZED.value, session_id))
     conn.commit()
     conn.close()
 
@@ -96,8 +97,10 @@ async def authorize_session(session_id: str):
 @router.post("/{session_id}/start-charging")
 async def start_charging(session_id: str):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
-    
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
@@ -107,8 +110,8 @@ async def start_charging(session_id: str):
         conn.close()
         raise HTTPException(status_code=400, detail=f"Cannot start charging in status {session.status.value}")
 
-    conn.execute("UPDATE sessions SET status = ? WHERE session_id = ?",
-                 (SessionStatus.CHARGING.value, session_id))
+    execute(conn, "UPDATE sessions SET status = ? WHERE session_id = ?",
+            (SessionStatus.CHARGING.value, session_id))
     conn.commit()
     conn.close()
 
@@ -118,8 +121,10 @@ async def start_charging(session_id: str):
 @router.post("/{session_id}/complete", response_model=SessionValidated)
 async def complete_session(session_id: str, req: CompleteSessionRequest):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
-    
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
+
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
@@ -132,7 +137,8 @@ async def complete_session(session_id: str, req: CompleteSessionRequest):
     now = datetime.now(timezone.utc)
     now_str = now.isoformat()
 
-    conn.execute(
+    execute(
+        conn,
         "UPDATE sessions SET status = ?, end_time = ?, energy_delivered = ?, duration_minutes = ? WHERE session_id = ?",
         (SessionStatus.COMPLETED.value, now_str, req.energy_delivered, req.duration_minutes, session_id),
     )
@@ -152,7 +158,9 @@ async def complete_session(session_id: str, req: CompleteSessionRequest):
 @router.get("/{session_id}")
 async def get_session(session_id: str):
     conn = get_connection()
-    row = conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    cursor.close()
     conn.close()
 
     if not row:

@@ -1,8 +1,8 @@
-"""Billing Service — Tariff rating and invoice line generation (pure domain service)
+"""Billing Service — Tariff rating and Invoice aggregate.
 
-DDD note: This service is a pure domain service. It calculates prices and generates
-invoice lines but NEVER writes to session state. Session state transitions
-(Rated, Invoiced) are owned by the session service (ChargingSession aggregate).
+DDD note: This service is now a Bounded Context that owns the Invoice aggregate.
+It handles its own state (Generated) and persists invoice data independently 
+of the session service.
 """
 
 import uuid
@@ -12,6 +12,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from shared.events import SessionRated, InvoiceLineGenerated
+from billing_service.tariff import Tariff
+from billing_service.rating_service import RatingService, default_rating_service
+
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -31,57 +34,59 @@ class InvoiceRequest(BaseModel):
     breakdown: dict = {}
 
 
-# Simple tariff: 2.45 DKK/kWh + 0.50 DKK/min parking after 10 min free
-ENERGY_RATE = 2.45  # DKK per kWh
-PARKING_RATE = 0.50  # DKK per minute after 10 free minutes
-PARKING_FREE_MINUTES = 10
-
-
+# Re-export for backward compatibility with session_service
 def calculate_price(energy_delivered: float, duration_minutes: int) -> tuple[float, float, int, dict]:
-    """Pure calculation — no side effects, no DB access."""
-    energy_cost = round(energy_delivered * ENERGY_RATE, 2)
-    billable_parking = max(0, duration_minutes - PARKING_FREE_MINUTES)
-    parking_cost = round(billable_parking * PARKING_RATE, 2)
-    total_cost = round(energy_cost + parking_cost, 2)
-    breakdown = {
-        "energy": energy_cost,
-        "parking": parking_cost,
-        "energy_rate": ENERGY_RATE,
-        "parking_rate": PARKING_RATE,
-        "billable_parking_minutes": billable_parking,
-    }
-    return total_cost, energy_cost, parking_cost, breakdown
+    """Pure calculation — delegates to RatingService (UL domain service).
 
+    Kept as module-level function for backward compatibility.
+    """
+    return default_rating_service.rate(energy_delivered, duration_minutes)
+
+
+# In-memory storage for Billing Context
+invoices = {}
+
+class Invoice(BaseModel):
+    invoice_id: str
+    session_id: str
+    amount: float
+    currency: str = "DKK"
+    status: str = "Generated"
+    timestamp: datetime
 
 @router.post("/rate", response_model=SessionRated)
 async def rate_session(req: RateRequest):
-    """Calculate price for a session (pure calculation, no side effects).
+    """Calculate price for a session and store the result in Billing Context."""
+    tariff = Tariff()
+    rating_service = RatingService(tariff)
+    total_cost, _, _, breakdown = rating_service.rate(req.energy_delivered, req.duration_minutes)
     
-    Session state transition to 'Rated' must be handled by the session service.
-    """
-    total_cost, _, _, breakdown = calculate_price(req.energy_delivered, req.duration_minutes)
-
-    return SessionRated(
+    rated_event = SessionRated(
         session_id=req.session_id,
         total_cost=total_cost,
         currency="DKK",
         breakdown=breakdown,
         timestamp=datetime.now(timezone.utc),
     )
-
+    return rated_event
 
 @router.post("/invoice", response_model=InvoiceLineGenerated)
 async def create_invoice(req: InvoiceRequest):
-    """Generate an invoice line (pure generation, no side effects).
-    
-    Session state transition to 'Invoiced' must be handled by the session service.
-    """
+    """Generate and persist an invoice in Billing Context."""
     invoice_id = str(uuid.uuid4())
-
+    
+    invoice = Invoice(
+        invoice_id=invoice_id,
+        session_id=req.session_id,
+        amount=req.total_cost,
+        timestamp=datetime.now(timezone.utc)
+    )
+    invoices[invoice_id] = invoice
+    
     return InvoiceLineGenerated(
         session_id=req.session_id,
         invoice_id=invoice_id,
         amount=req.total_cost,
         currency=req.currency,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=invoice.timestamp,
     )

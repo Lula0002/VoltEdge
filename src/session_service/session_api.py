@@ -156,13 +156,11 @@ async def complete_session(session_id: str, req: CompleteSessionRequest):
     )
 
 
+from billing_service.billing_api import rate_session as billing_rate, create_invoice as billing_create
+
 @router.post("/{session_id}/rate", response_model=SessionRated)
 async def rate_session(session_id: str):
-    """Transition session from Completed to Rated.
-    
-    Reads meter data from the session, calculates price via billing domain service,
-    and updates session state — all within the ChargingSession aggregate boundary.
-    """
+    """Transition session from Completed to Rated by calling Billing Context."""
     conn = get_connection()
     cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
     row = cursor.fetchone()
@@ -175,46 +173,31 @@ async def rate_session(session_id: str):
     session = _session_from_row(row)
     if session.status != SessionStatus.COMPLETED:
         conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot rate session in status '{session.status.value}'. Must be 'Completed'.",
-        )
+        raise HTTPException(status_code=400, detail=f"Cannot rate session in status '{session.status.value}'")
 
-    if session.energy_delivered is None or session.duration_minutes is None:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Session missing meter data (energy_delivered, duration_minutes)")
-
-    # Pure calculation via billing domain service (no side effects)
-    total_cost, _, _, breakdown = calculate_price(
-        session.energy_delivered, session.duration_minutes
-    )
-
-    now = datetime.now(timezone.utc)
+    # Call Billing Context (Retning B - Direct Domain Service Call)
+    from billing_service.billing_api import RateRequest
+    rated_data = await billing_rate(RateRequest(
+        session_id=session_id,
+        energy_delivered=session.energy_delivered,
+        duration_minutes=session.duration_minutes,
+        charger_id=session.charger_id,
+        contract_id=session.contract_id
+    ))
 
     execute(
         conn,
         "UPDATE sessions SET status = ?, total_cost = ? WHERE session_id = ?",
-        (SessionStatus.RATED.value, total_cost, session_id),
+        (SessionStatus.RATED.value, rated_data.total_cost, session_id),
     )
     conn.commit()
     conn.close()
 
-    return SessionRated(
-        session_id=session_id,
-        total_cost=total_cost,
-        currency="DKK",
-        breakdown=breakdown,
-        timestamp=now,
-    )
-
+    return rated_data
 
 @router.post("/{session_id}/invoice", response_model=InvoiceLineGenerated)
 async def create_invoice(session_id: str):
-    """Transition session from Rated to Invoiced.
-    
-    Generates an invoice line and updates session state — all within the
-    ChargingSession aggregate boundary.
-    """
+    """Transition session from Rated to Invoiced by calling Billing Context."""
     conn = get_connection()
     cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
     row = cursor.fetchone()
@@ -227,33 +210,24 @@ async def create_invoice(session_id: str):
     session = _session_from_row(row)
     if session.status != SessionStatus.RATED:
         conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot invoice session in status '{session.status.value}'. Must be 'Rated'.",
-        )
+        raise HTTPException(status_code=400, detail=f"Cannot invoice session in status '{session.status.value}'")
 
-    if session.total_cost is None:
-        conn.close()
-        raise HTTPException(status_code=400, detail="Session has no total_cost. Must be rated first.")
-
-    invoice_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
+    # Call Billing Context (Retning B - Direct Domain Service Call)
+    from billing_service.billing_api import InvoiceRequest
+    invoice_data = await billing_create(InvoiceRequest(
+        session_id=session_id,
+        total_cost=session.total_cost
+    ))
 
     execute(
         conn,
         "UPDATE sessions SET status = ?, invoice_id = ? WHERE session_id = ?",
-        (SessionStatus.INVOICED.value, invoice_id, session_id),
+        (SessionStatus.INVOICED.value, invoice_data.invoice_id, session_id),
     )
     conn.commit()
     conn.close()
 
-    return InvoiceLineGenerated(
-        session_id=session_id,
-        invoice_id=invoice_id,
-        amount=session.total_cost,
-        currency="DKK",
-        timestamp=now,
-    )
+    return invoice_data
 
 
 @router.get("/")

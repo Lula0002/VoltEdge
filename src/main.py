@@ -17,10 +17,11 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "Automated billing & settlement — Happy Path: SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated\n\n"
-        "**Quick demo**: `POST /auto-flow` runs the entire Happy Path in a single call.\n"
-        "**Step-by-step**: Click each endpoint below to walk through the flow manually.\n"
-        "**Persistence**: All sessions survive server restart (SQLite)."
+        "VoltEdge Mobility MVP API — DDD-baseret arkitektur med adskilte Bounded Contexts (Session, Billing, Analytics).\n\n"
+        "**Session Context**: Ejer ChargingSession aggregate og state-maskinen.\n"
+        "**Billing Context**: Ejer Invoice aggregate og håndterer prissætning uafhængigt.\n"
+        "**Analytics Context**: Leverer prædiktioner og anomalidetektering.\n\n"
+        "**Bemærk**: Billing Context er nu en selvstændig Bounded Context med egen persistens."
     ),
     version="1.0.1",
     docs_url="/docs",

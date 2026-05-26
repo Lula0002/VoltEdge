@@ -32,3 +32,10 @@ Thumbs.db
 # Azure / deployment artifacts
 *.zip
 *.tar.gz
+
+# Pre-delivery cleanup — removed from git
+tests/
+postman/
+docs/
+liste.md
+README.backup.md

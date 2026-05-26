@@ -1,4 +1,4 @@
-"""RatingService — Domain service, der beregner prisen for en session ud fra gældende tarif
+"""RatingService — Domain service that calculates the price for a session based on the applicable tariff.
 
 Ubiquitous Language: Rating is the domain service that applies a Tariff to a session.
 """

@@ -175,7 +175,9 @@ async def rate_session(session_id: str):
         conn.close()
         raise HTTPException(status_code=400, detail=f"Cannot rate session in status '{session.status.value}'")
 
-    # Call Billing Context (Retning B - Direct Domain Service Call)
+    # Call Billing Context (Retning B - Direct Domain Service Call).
+    # Note: Billing Context is the authoritative source for invoicing data.
+    # The session status is mirrored here for readability.
     from billing_service.billing_api import RateRequest
     rated_data = await billing_rate(RateRequest(
         session_id=session_id,

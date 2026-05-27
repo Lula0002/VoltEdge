@@ -1,8 +1,6 @@
-"""Billing Service — Tariff rating and Invoice aggregate.
+"""Billing — Invoice aggregate (Aggregate 2 of the Charging Session Bounded Context).
 
-DDD note: This service is now a Bounded Context that owns the Invoice aggregate.
-It handles its own state (Generated) and persists invoice data independently 
-of the session service.
+Handles tariff rating, price calculation, and invoice persistence.
 """
 
 import uuid

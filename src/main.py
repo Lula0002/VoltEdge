@@ -1,22 +1,22 @@
 """VoltEdge MVP — Combined FastAPI Application
 
-All 3 services run in one Azure Web App on a single port.
+All modules run in one Azure Web App on a single port.
 
 Analytics/ML is presented as an **external capability** that can ONLY be
 accessed via its own API endpoints (/analytics/*). The ML model is isolated in
-ml_model.py — separate from the core Session and Billing logic.
+ml_model.py — separate from the Charging Session Bounded Context.
 
 Architecture:
-  ┌─────────────────────────────────────┐
-  │  Core (Session + Billing)           │
-  │  - Direct imports (modular monolith)│
-  └────────────┬────────────────────────┘
-               │ calls Analytics via HTTP
+  ┌─────────────────────────────────────────┐
+  │  1 Bounded Context: Charging Session    │
+  │  ├─ Aggregate 1: ChargingSession        │
+  │  └─ Aggregate 2: Invoice                │
+  └────────────┬────────────────────────────┘
+               │ calls Analytics ONLY via HTTP
                ▼
   ┌─────────────────────────────────────┐
   │  Analytics/ML (External Capability) │
-  │  - Isolated in ml_model.py          │
-  │  - ONLY accessible via API          │
+  │  - KUN tilgængelig via HTTP/API     │
   └─────────────────────────────────────┘
 """
 
@@ -33,11 +33,11 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "VoltEdge Mobility MVP API — DDD-based architecture with 3 Bounded Contexts.\n\n"
+        "VoltEdge Mobility MVP API — DDD-based architecture with 1 Bounded Context.\n\n"
         "---\n"
-        "### Core (Session + Billing)\n"
-        "- **Session Context** — Owns the ChargingSession aggregate and state machine.\n"
-        "- **Billing Context** — Owns the Invoice aggregate and handles pricing independently.\n\n"
+        "### Charging Session (Bounded Context)\n"
+        "- **Aggregate 1: ChargingSession** — State machine: Created → Charging → Completed → Rated → Invoiced.\n"
+        "- **Aggregate 2: Invoice** — Tarifberegning og fakturagenerering.\n\n"
         "### External Capability (Analytics/ML) — `/analytics/*`\n"
         "- ML prediction (energy & revenue) offered as an **external API service**.\n"
         "- The ML model is ISOLATED in `ml_model.py` — no direct imports from Session/Billing.\n"

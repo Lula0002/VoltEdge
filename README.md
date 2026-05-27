@@ -37,18 +37,21 @@ The **ChargingSession** aggregate follows a state machine through 5 statuses:
 
 ## Architecture
 
-All 3 services run in a **single Azure Web App** on one port — each with its own URL prefix:
+All modules run in a **single Azure Web App** on one port — each with its own URL prefix:
 
-| Service | Type | URL prefix | Responsibility |
+| Modul | Rolle i Bounded Context | URL prefix | Responsibility |
 |---|---|---|---|
-| **session-service** | Core | `/sessions/*` | ChargingSession aggregate + state machine |
-| **billing-service** | Generic | `/billing/*` | Tariff rating + invoice line generation |
-| **analytics-service** | External capability | `/analytics/*` | ML prediction (linear regression) — energy and revenue |
+| **ChargingSession** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed |
+| **Invoice** | Aggregate 2 (Generic) | `/billing/*` | Tarifberegning + fakturagenerering |
+| **Analytics/ML** | 🚫 External capability (kun via API) | `/analytics/*` | ML-prediction — KUN via HTTP |
 
-> **DDD note — Bounded Context boundaries:**  
-> Session service owns the `ChargingSession` aggregate and its state machine (`Created → Charging → Completed`).  
-> Billing service is a **Bounded Context** that owns the `Invoice` aggregate. It handles its own state (`Generated`) and persists invoice data independently.  
-> Analytics is an **external capability** offered to customers via API — the ML model is isolated in `ml_model.py`, separate from core microservice logic.
+> **DDD note — Bounded Context:**  
+> **Charging Session** er **én** Bounded Context, der ejer **to aggregater**:  
+> - `ChargingSession` — styrer ladningens tilstandsmaskine (Created → Charging → Completed)  
+> - `Invoice` — håndterer prissætning og faktura (Rated → Invoiced)  
+>  
+> Analytics/ML er en **ekstern capability** — den kan **KUN** tilgås via HTTP/API-kald (`/analytics/*`).  
+> Der er ingen direkte Python-import mellem kerne-koden og ML-modellen — kun HTTP-kald.
 
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
@@ -100,9 +103,9 @@ Swagger at: `http://localhost:8000/docs`
 
 ---
 
-#### `src/session_service/session_api.py` — Session Service (Core)
+#### `src/session_service/session_api.py` — Aggregate 1: ChargingSession
 
-**Purpose:** Manages a charging session as a **state machine**.
+**Purpose:** Manages a charging session as a **state machine** (Aggregate 1 of the Charging Session Bounded Context).
 
 | Endpoint | Description |
 |---|---|
@@ -114,15 +117,14 @@ Swagger at: `http://localhost:8000/docs`
 | `POST /sessions/{id}/invoice` | Generate invoice → status: `Invoiced` |
 | `GET /sessions/{id}` | Get session data |
 
-**State machine:** `Created → Charging → Completed → Rated → Invoiced`  
-*(Note: Rated/Invoiced statuses are mirrored from Billing Context. Billing is the authoritative source for invoice data.)*
+**State machine:** `Created → Charging → Completed → Rated → Invoiced`
 
 
 ---
 
-#### `src/billing_service/billing_api.py` — Billing Service (Generic / Pure Domain Service)
+#### `src/billing_service/billing_api.py` — Aggregate 2: Invoice
 
-**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite.
+**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2 of the Charging Session Bounded Context).
 
 | Endpoint | Description |
 |---|---|
@@ -136,7 +138,7 @@ Swagger at: `http://localhost:8000/docs`
 
 ---
 
-#### `src/analytics_service/analytics_api.py` — Analytics Service (Supporting)
+#### `src/analytics_service/analytics_api.py` — External Capability: Analytics/ML
 
 **Purpose:** ML prediction of energy consumption and revenue via linear regression.
 
@@ -403,17 +405,17 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ├── src/
 │   ├── main.py                       # FastAPI entry point (Session, Billing, Analytics)
 │   ├── requirements.txt              # Python dependencies
-│   ├── session_service/              # Core — ChargingSession aggregate
+│   ├── session_service/              # Aggregate 1: ChargingSession
 │   │   ├── session_api.py            # FastAPI endpoints + state machine
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── billing_service/              # Generic — Tariff & Invoice
+│   ├── billing_service/              # Aggregate 2: Invoice
 │   │   ├── billing_api.py            # Rating + invoice endpoints
 │   │   ├── tariff.py                 # Pricing rules (Value Object)
 │   │   ├── rating_service.py         # Domain service
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── analytics_service/            # External ML capability (via API)
+│   ├── analytics_service/            # 🚫 External capability: Analytics/ML (kun via API)
 │   │   ├── analytics_api.py          # ML prediction endpoints
 │   │   ├── ml_model.py               # Linear regression model (isolated)
 │   │   ├── .env.example

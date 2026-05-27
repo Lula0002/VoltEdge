@@ -30,12 +30,6 @@ class RevenueRequest(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────────────
 
-@router.get("/health")
-async def health():
-    """Health check for Analytics Service."""
-    return {"status": "healthy", "service": "analytics-service"}
-
-
 @router.post("/predict-energy")
 async def predict_energy(req: PredictEnergyRequest):
     """Predict future energy consumption (kWh) based on duration, weather and time of day.

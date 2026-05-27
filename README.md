@@ -148,7 +148,6 @@ Swagger at: `http://localhost:8000/docs`
 
 | Endpoint | Description |
 |---|---|
-| `GET /analytics/health` | Health check |
 | `POST /analytics/predict-energy` | Predict kWh based on duration, temperature and time of day |
 | `POST /analytics/predict-revenue` | Predict revenue based on same features + kWh price and number of sessions |
 

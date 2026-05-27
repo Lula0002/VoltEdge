@@ -50,6 +50,9 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 > - **Aggregate 1:** `Session` — entity med **SessionID** som rod, styrer ladningens tilstandsmaskine (Created → Charging → Completed)  
 > - **Aggregate 2:** `InvoiceLine` — entity med **InvoiceID** som rod, håndterer prissætning og faktura (Rated → Invoiced)  
 >  
+> **Der er kun 1 API i løsningen** — mellem Charging Session Bounded Context og Analytics/ML.  
+> Session og InvoiceLine kommunikerer via direkte Python-import (samme Bounded Context).  
+>  
 > Analytics/ML er en **ekstern capability** — den kan **KUN** tilgås via HTTP/API-kald (`/analytics/*`).  
 > Der er ingen direkte Python-import mellem kerne-koden og ML-modellen — kun HTTP-kald.
 
@@ -252,29 +255,26 @@ No body required — reads total_cost from the session automatically.
 ### Test with curl
 
 ```bash
-# Health check
-curl http://localhost:8000/health
-
 # Start a session
 curl -X POST http://localhost:8000/sessions/start \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1"}'
 
-# ML predict energy
+# ML predict energy (external capability via HTTP)
 curl -X POST http://localhost:8000/analytics/predict-energy \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14}'
 
-# ML predict revenue
+# ML predict revenue (external capability via HTTP)
 curl -X POST http://localhost:8000/analytics/predict-revenue \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 
-# 🎯 Full flow + Analytics via HTTP (demonstrates external capability)
+# 🎯 Full Happy Path + Analytics via HTTP (demonstrates external capability)
+# Dette endpoint viser at Analytics kun kan tilgås via HTTP — ikke direkte import
 curl -X POST http://localhost:8000/auto-flow-with-ml \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1", "energy_delivered": 25.5, "duration_minutes": 60}'
-```
 ```
 
 **Live deployment URL:**  

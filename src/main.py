@@ -57,62 +57,6 @@ class AutoFlowRequest(BaseModel):
     duration_minutes: int = Field(default=60)
 
 
-@app.post("/auto-flow", tags=["auto-flow"])
-async def auto_flow(req: AutoFlowRequest):
-    """Run the complete Happy Path automatically in a single call.
-
-    Steps:
-    1. Create session (Created)
-    2. Start charging (Charging)
-    3. Complete with meter data (Completed)
-    4. Calculate price (Rated)
-    5. Generate invoice (Invoiced)
-
-    Returns the full trace from start to finish.
-    """
-    from session_service.session_api import (
-        start_session,
-        start_charging,
-        complete_session,
-        rate_session,
-        create_invoice,
-        StartSessionRequest,
-        CompleteSessionRequest,
-    )
-
-    # Step 1: Start session
-    started = await start_session(StartSessionRequest(
-        charger_id=req.charger_id,
-        contract_id=req.contract_id,
-    ))
-    session_id = started.session_id
-
-    # Step 2: Start charging
-    charging = await start_charging(session_id)
-
-    # Step 3: Complete with meter data
-    validated = await complete_session(
-        session_id,
-        CompleteSessionRequest(
-            energy_delivered=req.energy_delivered,
-            duration_minutes=req.duration_minutes,
-        ),
-    )
-
-    # Step 4: Rate session (session service owns state transition)
-    rated = await rate_session(session_id)
-
-    # Step 5: Generate invoice (session service owns state transition)
-    invoiced = await create_invoice(session_id)
-
-    return {
-        "session_started": started.model_dump(),
-        "charging_started": charging,
-        "session_validated": validated.model_dump(),
-        "session_rated": rated.model_dump(),
-        "invoice_generated": invoiced.model_dump(),
-    }
-
 
 @app.post("/auto-flow-with-ml", tags=["auto-flow"])
 async def auto_flow_with_ml(req: AutoFlowRequest):

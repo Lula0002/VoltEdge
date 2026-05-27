@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from analytics_service.ml_model import predict_energy_kwh
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(prefix="/analytics", tags=["analytics (ml) - external capability"])
 
 
 # ── Request/Response modeller ────────────────────────────────

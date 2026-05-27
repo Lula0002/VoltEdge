@@ -2,9 +2,22 @@
 
 All 3 services run in one Azure Web App on a single port.
 
-Analytics/ML is presented as an **external capability** offered to customers
-via its own API endpoints (/analytics/*). The ML model is isolated in
+Analytics/ML is presented as an **external capability** that can ONLY be
+accessed via its own API endpoints (/analytics/*). The ML model is isolated in
 ml_model.py — separate from the core Session and Billing logic.
+
+Architecture:
+  ┌─────────────────────────────────────┐
+  │  Core (Session + Billing)           │
+  │  - Direct imports (modular monolith)│
+  └────────────┬────────────────────────┘
+               │ calls Analytics via HTTP
+               ▼
+  ┌─────────────────────────────────────┐
+  │  Analytics/ML (External Capability) │
+  │  - Isolated in ml_model.py          │
+  │  - ONLY accessible via API          │
+  └─────────────────────────────────────┘
 """
 
 import sys
@@ -21,12 +34,15 @@ app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
         "VoltEdge Mobility MVP API — DDD-based architecture with 3 Bounded Contexts.\n\n"
-        "**Session Context** — Owns the ChargingSession aggregate and state machine.\n"
-        "**Billing Context** — Owns the Invoice aggregate and handles pricing independently.\n"
-        "**Analytics Context** — ML prediction capability (energy & revenue) offered as an\n"
-        "external service via dedicated API endpoints. The ML model is isolated from the\n"
-        "core microservice logic.\n\n"
-        "All services run in one Azure Web App for deployment simplicity."
+        "---\n"
+        "### Core (Session + Billing)\n"
+        "- **Session Context** — Owns the ChargingSession aggregate and state machine.\n"
+        "- **Billing Context** — Owns the Invoice aggregate and handles pricing independently.\n\n"
+        "### External Capability (Analytics/ML) — `/analytics/*`\n"
+        "- ML prediction (energy & revenue) offered as an **external API service**.\n"
+        "- The ML model is ISOLATED in `ml_model.py` — no direct imports from Session/Billing.\n"
+        "- The only way to use ML is via HTTP calls to `/analytics/` endpoints.\n\n"
+        "**Try `POST /auto-flow-with-ml`** to see the core flow call Analytics via HTTP!"
     ),
     version="1.0.3",
     docs_url="/docs",
@@ -96,6 +112,84 @@ async def auto_flow(req: AutoFlowRequest):
         "session_rated": rated.model_dump(),
         "invoice_generated": invoiced.model_dump(),
     }
+
+
+@app.post("/auto-flow-with-ml", tags=["auto-flow"])
+async def auto_flow_with_ml(req: AutoFlowRequest):
+    """Run the Happy Path AND call Analytics/ML via HTTP — demonstrating separation.
+
+    This endpoint shows that Analytics is an **external capability** consumed via API:
+      1. Core flow runs (Session + Billing) — direct Python calls
+      2. Analytics/ML is called via **HTTP** (httpx) — just like an external customer would
+
+    The ML call uses httpx to make an actual HTTP request to the analytics endpoint,
+    proving it is a separate service accessed through its API — not via direct import.
+    """
+    import httpx
+
+    # ── Step 1-5: Core flow (Session + Billing) ──
+    from session_service.session_api import (
+        start_session,
+        start_charging,
+        complete_session,
+        rate_session,
+        create_invoice,
+        StartSessionRequest,
+        CompleteSessionRequest,
+    )
+
+    started = await start_session(StartSessionRequest(
+        charger_id=req.charger_id,
+        contract_id=req.contract_id,
+    ))
+    session_id = started.session_id
+    charging = await start_charging(session_id)
+    validated = await complete_session(
+        session_id,
+        CompleteSessionRequest(
+            energy_delivered=req.energy_delivered,
+            duration_minutes=req.duration_minutes,
+        ),
+    )
+    rated = await rate_session(session_id)
+    invoiced = await create_invoice(session_id)
+
+    core_result = {
+        "session_started": started.model_dump(),
+        "charging_started": charging,
+        "session_validated": validated.model_dump(),
+        "session_rated": rated.model_dump(),
+        "invoice_generated": invoiced.model_dump(),
+    }
+
+    # ── Step 6: Call Analytics/ML via HTTP (external API pattern) ──
+    # This is the key demonstration: Analytics is consumed via HTTP,
+    # NOT via a direct Python import.
+    base_url = "http://localhost:8000"
+    try:
+        async with httpx.AsyncClient() as client:
+            ml_response = await client.post(
+                f"{base_url}/analytics/predict-energy",
+                json={
+                    "duration_minutes": req.duration_minutes,
+                    "temperature": 15,
+                    "hour_of_day": 14,
+                },
+                timeout=10,
+            )
+            ml_result = ml_response.json()
+    except Exception as e:
+        ml_result = {"error": f"Analytics service unavailable: {e}"}
+
+    return {
+        "core": core_result,
+        "analytics_ml_external_api_call": {
+            "endpoint": "POST /analytics/predict-energy (via HTTP)",
+            "note": "Analytics/ML is an EXTERNAL capability — called via HTTP, not direct import",
+            "result": ml_result,
+        },
+    }
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -63,7 +63,8 @@ All 3 services run in a **single Azure Web App** on one port — each with its o
 - **Database:** SQLite (both local and in production)
 - **Cloud:** Microsoft Azure (App Service) — code-based deployment
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
-- **ML:** Scikit-learn Linear Regression (separate standalone service)
+- **ML:** Scikit-learn Linear Regression (external capability via API)
+- **Integration:** Session/Billing calls Analytics via HTTP (httpx) — proving separation
 - **Secrets:** `.env.example` + GitHub Secrets
 
 ---
@@ -154,6 +155,7 @@ Trained on simulated data (12 samples).
 - `fastapi` + `uvicorn` (web server)
 - `pydantic` (data validation)
 - `scikit-learn` + `numpy` (ML)
+- `httpx` (HTTP client for cross-service API calls)
 - `mysql-connector-python` (MySQL driver — installed but not used)
 - `pytest` + `httpx` (testing)
 
@@ -243,8 +245,6 @@ No body required — reads total_cost from the session automatically.
 
 ### Test with curl
 
-Replace `http://localhost:8000` with the Azure URL if testing the live deployment.
-
 ```bash
 # Health check
 curl http://localhost:8000/health
@@ -263,6 +263,12 @@ curl -X POST http://localhost:8000/analytics/predict-energy \
 curl -X POST http://localhost:8000/analytics/predict-revenue \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
+
+# 🎯 Full flow + Analytics via HTTP (demonstrates external capability)
+curl -X POST http://localhost:8000/auto-flow-with-ml \
+  -H "Content-Type: application/json" \
+  -d '{"charger_id": "charger-1", "contract_id": "contract-1", "energy_delivered": 25.5, "duration_minutes": 60}'
+```
 ```
 
 **Live deployment URL:**  

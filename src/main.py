@@ -20,7 +20,7 @@ app = FastAPI(
         "VoltEdge Mobility MVP API — DDD-baseret arkitektur med adskilte Bounded Contexts (Session, Billing, Analytics).\n\n"
         "**Session Context**: Ejer ChargingSession aggregate og state-maskinen.\n"
         "**Billing Context**: Ejer Invoice aggregate og håndterer prissætning uafhængigt.\n"
-        "**Analytics Context**: Prisforudsigelse via lineær regression.\n\n"
+        "**Analytics Context**: ML-forudsigelse af strømforbrug og indtjening via lineær regression (features: varighed, vejr, tidspunkt).\n\n"
         "**Bemærk**: Billing Context er nu en selvstændig Bounded Context med egen persistens."
     ),
     version="1.0.1",

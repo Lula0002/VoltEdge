@@ -53,7 +53,6 @@ class Invoice(BaseModel):
     status: str = "Generated"
     timestamp: datetime
 
-@router.post("/rate", response_model=SessionRated)
 async def rate_session(req: RateRequest):
     """Calculate price for a session and store the result in Billing Context."""
     tariff = Tariff()
@@ -69,7 +68,6 @@ async def rate_session(req: RateRequest):
     )
     return rated_event
 
-@router.post("/invoice", response_model=InvoiceLineGenerated)
 async def create_invoice(req: InvoiceRequest):
     """Generate and persist an invoice in SQLite database."""
     invoice_id = str(uuid.uuid4())

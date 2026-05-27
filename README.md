@@ -126,11 +126,12 @@ Swagger at: `http://localhost:8000/docs`
 
 **Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2: InvoiceLine entity with InvoiceID as root of the Charging Session Bounded Context).
 
+> ⚠️ `POST /billing/rate` og `POST /billing/invoice` er ikke længere eksponeret som API-endpoints — de kaldes internt af Session-aggregatet via `POST /sessions/{id}/rate` og `POST /sessions/{id}/invoice`.
+
 | Endpoint | Description |
 |---|---|
 | `GET /billing/health` | Health check |
-| `POST /billing/rate` | Calculate price: 2.45 DKK/kWh + 0.50 DKK/min after 10 free min |
-| `POST /billing/invoice` | Create invoice → emit `InvoiceLineGenerated` |
+| `GET /billing/invoices` | Return all invoices from the database |
 
 **Pricing logic (defined in `tariff.py`):**
 - Energy: 2.45 DKK/kWh

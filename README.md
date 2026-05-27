@@ -42,19 +42,19 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 | Modul | Rolle i Bounded Context | URL prefix | Responsibility |
 |---|---|---|---|
 | **Session** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed |
-| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tarifberegning + fakturagenerering |
-| **Analytics/ML** | 🚫 External capability (kun via API) | `/analytics/*` | ML-prediction — KUN via HTTP |
+| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tariff calculation + invoice generation |
+| **Analytics/ML** | 🚫 External capability (API only) | `/analytics/*` | ML prediction — HTTP only |
 
 > **DDD note — Bounded Context:**  
-> **Charging Session** er **én** Bounded Context, der ejer **to aggregater**:  
-> - **Aggregate 1:** `Session` — entity med **SessionID** som rod, styrer ladningens tilstandsmaskine (Created → Charging → Completed)  
-> - **Aggregate 2:** `InvoiceLine` — entity med **InvoiceID** som rod, håndterer prissætning og faktura (Rated → Invoiced)  
+> **Charging Session** is **one** Bounded Context owning **two aggregates**:  
+> - **Aggregate 1:** `Session` — entity with **SessionID** as root, manages the charging state machine (Created → Charging → Completed)  
+> - **Aggregate 2:** `InvoiceLine` — entity with **InvoiceID** as root, handles pricing and invoicing (Rated → Invoiced)  
 >  
-> **Der er kun 1 API i løsningen** — mellem Charging Session Bounded Context og Analytics/ML.  
-> Session og InvoiceLine kommunikerer via direkte Python-import (samme Bounded Context).  
+> **There is only 1 API in this solution** — between the Charging Session Bounded Context and Analytics/ML.  
+> Session and InvoiceLine communicate via direct Python imports (same Bounded Context).  
 >  
-> Analytics/ML er en **ekstern capability** — den kan **KUN** tilgås via HTTP/API-kald (`/analytics/*`).  
-> Der er ingen direkte Python-import mellem kerne-koden og ML-modellen — kun HTTP-kald.
+> Analytics/ML is an **external capability** — it can **ONLY** be accessed via HTTP/API calls (`/analytics/*`).  
+> There are no direct Python imports between the core code and the ML model — only HTTP calls.
 
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
@@ -71,8 +71,8 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
 - **ML:** Scikit-learn Linear Regression (external capability via API)
 - **Integration:** Session/Billing calls Analytics via HTTP (httpx) — proving separation
-- **BI-readiness:** GET endpoints (`/sessions/`, `/billing/invoices`) kan kaldes direkte fra Power BI, Excel, eller andre BI-værktøjer — både lokalt og på Azure
-- **CORS:** Aktiveret på tværs af alle endpoints
+- **BI-readiness:** GET endpoints (`/sessions/`, `/billing/invoices`) can be called directly from Power BI, Excel, or other BI tools — both locally and on Azure
+- **CORS:** Enabled across all endpoints
 - **Secrets:** `.env.example` + GitHub Secrets
 - **Secrets:** `.env.example` + GitHub Secrets
 
@@ -129,7 +129,7 @@ Swagger at: `http://localhost:8000/docs`
 
 **Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2: InvoiceLine entity with InvoiceID as root of the Charging Session Bounded Context).
 
-> ⚠️ `POST /billing/rate` og `POST /billing/invoice` er ikke længere eksponeret som API-endpoints — de kaldes internt af Session-aggregatet via `POST /sessions/{id}/rate` og `POST /sessions/{id}/invoice`.
+> ⚠️ `POST /billing/rate` and `POST /billing/invoice` are no longer exposed as API endpoints — they are called internally by the Session aggregate via `POST /sessions/{id}/rate` and `POST /sessions/{id}/invoice`.
 
 | Endpoint | Description |
 |---|---|
@@ -271,7 +271,7 @@ curl -X POST http://localhost:8000/analytics/predict-revenue \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 
 # 🎯 Full Happy Path + Analytics via HTTP (demonstrates external capability)
-# Dette endpoint viser at Analytics kun kan tilgås via HTTP — ikke direkte import
+# This endpoint demonstrates that Analytics can only be accessed via HTTP — not direct import
 curl -X POST http://localhost:8000/auto-flow-with-ml \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1", "energy_delivered": 25.5, "duration_minutes": 60}'
@@ -416,7 +416,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   ├── rating_service.py         # Domain service
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── analytics_service/            # 🚫 External capability: Analytics/ML (kun via API)
+│   ├── analytics_service/            # 🚫 External capability: Analytics/ML (API only)
 │   │   ├── analytics_api.py          # ML prediction endpoints
 │   │   ├── ml_model.py               # Linear regression model (isolated)
 │   │   ├── .env.example
@@ -447,4 +447,4 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## License
 
-This project is developed as part of the 6th semester exam at Københavns Erhvervsakademi.
+This project is developed as part of the 6th semester exam at Copenhagen Business Academy.

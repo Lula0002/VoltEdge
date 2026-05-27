@@ -11,20 +11,20 @@ from analytics_service.ml_model import predict_energy_kwh
 router = APIRouter(prefix="/analytics", tags=["analytics (ml) - external capability"])
 
 
-# ── Request/Response modeller ────────────────────────────────
+# ── Request/Response Models ──────────────────────────────────
 
 class PredictEnergyRequest(BaseModel):
     duration_minutes: int = Field(default=60, description="Expected charging time in minutes", examples=[60])
-    temperature: float = Field(default=15, description="Forventet temperatur i °C", examples=[15])
+    temperature: float = Field(default=15, description="Expected temperature in °C", examples=[15])
     hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
 
 
 class RevenueRequest(BaseModel):
     duration_minutes: int = Field(default=60, description="Average charging time per session")
-    temperature: float = Field(default=15, description="Forventet gennemsnitstemperatur")
+    temperature: float = Field(default=15, description="Expected average temperature")
     hour_of_day: int = Field(default=14, description="Typical time of day")
-    kwh_price: float = Field(default=2.45, description="Forventet kWh-pris i DKK", examples=[2.45])
-    num_sessions: int = Field(default=100, description="Antal forventede ladesessioner")
+    kwh_price: float = Field(default=2.45, description="Expected kWh price in DKK", examples=[2.45])
+    num_sessions: int = Field(default=100, description="Expected number of charging sessions")
     num_chargers: int = Field(default=10, description="Number of chargers")
 
 
@@ -32,7 +32,7 @@ class RevenueRequest(BaseModel):
 
 @router.get("/health")
 async def health():
-    """Sundhedstjek for Analytics Service."""
+    """Health check for Analytics Service."""
     return {"status": "healthy", "service": "analytics-service"}
 
 

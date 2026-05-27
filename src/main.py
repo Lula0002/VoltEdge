@@ -16,7 +16,7 @@ Architecture:
                ▼
   ┌─────────────────────────────────────┐
   │  Analytics/ML (External Capability) │
-  │  - KUN tilgængelig via HTTP/API     │
+  │  - ONLY accessible via HTTP/API     │
   └─────────────────────────────────────┘
 """
 
@@ -37,7 +37,7 @@ app = FastAPI(
         "---\n"
         "### Charging Session (Bounded Context)\n"
         "- **Aggregate 1: Session** (SessionID as root) — State machine: Created → Charging → Completed → Rated → Invoiced.\n"
-        "- **Aggregate 2: InvoiceLine** (InvoiceID as root) — Tarifberegning og fakturagenerering.\n\n"
+        "- **Aggregate 2: InvoiceLine** (InvoiceID as root) — Tariff calculation and invoice generation.\n\n"
         "### External Capability (Analytics/ML) — `/analytics/*`\n"
         "- ML prediction (energy & revenue) offered as an **external API service**.\n"
         "- The ML model is ISOLATED in `ml_model.py` — no direct imports from Session/Billing.\n"

@@ -5,7 +5,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 
 ## Table of Contents
 
-1. [Happy Path](#happy-path-4-steps)
+1. [Happy Path](#happy-path-6-steps)
 2. [Architecture](#architecture)
 3. [Tech Stack](#tech-stack)
 4. [Code Structure](#code-structure)
@@ -20,17 +20,18 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 
 ---
 
-## Happy Path (4 steps)
+## Happy Path (5 steps)
 
 ```
-SessionStarted → SessionValidated → SessionRated → InvoiceLineGenerated
+Created → Charging → Completed → Rated → Invoiced
 ```
 
-Each event represents a step in the billing chain:
-1. **SessionStarted** — A vehicle connects to a charger
-2. **SessionValidated** — Charging is completed with metered data
-3. **SessionRated** — Price is calculated based on tariff rules
-4. **InvoiceLineGenerated** — An invoice line is generated
+The **ChargingSession** aggregate follows a state machine through 5 statuses:
+1. **Created** — Session created with charger_id and contract_id
+2. **Charging** — Charging starts
+3. **Completed** — Charging completed with meter data (energy_delivered, duration_minutes)
+4. **Rated** — Price calculated via tariff rules (2.45 DKK/kWh + 0.50 DKK/min after 10 free minutes)
+5. **Invoiced** — Invoice generated and persisted to the database
 
 ---
 
@@ -42,10 +43,10 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 |---|---|---|---|
 | **session-service** | Core | `/sessions/*` | ChargingSession aggregate + state machine |
 | **billing-service** | Generic | `/billing/*` | Tariff rating + invoice line generation |
-| **analytics-service** | Supporting | `/analytics/*` | ML anomaly detection (linear regression) |
+| **analytics-service** | Supporting | `/analytics/*` | ML prediction (linear regression) — energy and revenue |
 
 > **DDD note — Bounded Context boundaries:**  
-> Session service owns the `ChargingSession` aggregate and its state machine (`Created → Authorized → Charging → Completed`).  
+> Session service owns the `ChargingSession` aggregate and its state machine (`Created → Charging → Completed`).  
 > Billing service is a **Bounded Context** that owns the `Invoice` aggregate. It handles its own state (`Generated`) and persists invoice data independently.  
 > Session service mirrors the `Rated` and `Invoiced` statuses for readability, but the Billing service is the **authoritative source** for all invoicing data.
 
@@ -59,7 +60,7 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 ## Tech Stack
 
 - **API:** Python (FastAPI) with Swagger/OpenAPI docs
-- **Database:** MySQL (production on Azure) / SQLite (local dev, auto-fallback)
+- **Database:** SQLite (both local and in production)
 - **Cloud:** Microsoft Azure (App Service) — code-based deployment
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
 - **ML:** Scikit-learn Linear Regression (domain service)
@@ -89,9 +90,9 @@ Swagger at: `http://localhost:8000/docs`
 `SessionStarted`, `SessionValidated`, `SessionRated`, `InvoiceLineGenerated`
 
 #### `src/shared/database.py`
-**Database helper** — MySQL (production) with SQLite fallback (local dev).  
-- `DATABASE_URL=mysql://user:password@host:3306/voltedge` → MySQL  
+**Database helper** — SQLite (both local and in production).  
 - `DATABASE_URL` unset → SQLite (`voltedge.db` created automatically on startup)
+- Also supports MySQL via `DATABASE_URL=mysql://...` (prepared but not used)
 
 ---
 
@@ -118,7 +119,7 @@ Swagger at: `http://localhost:8000/docs`
 
 #### `src/billing_service/billing_api.py` — Billing Service (Generic / Pure Domain Service)
 
-**Purpose:** Price calculation (rating) and invoice generation — no side effects, no DB writes.
+**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite.
 
 | Endpoint | Description |
 |---|---|
@@ -126,25 +127,24 @@ Swagger at: `http://localhost:8000/docs`
 | `POST /billing/rate` | Calculate price: 2.45 DKK/kWh + 0.50 DKK/min after 10 free min |
 | `POST /billing/invoice` | Create invoice → emit `InvoiceLineGenerated` |
 
-**Pricing logic:**
+**Pricing logic (defined in `tariff.py`):**
 - Energy: 2.45 DKK/kWh
 - Parking: 0.50 DKK/min after 10 free minutes
-- Configurable via environment variables (`.env.example`)
 
 ---
 
 #### `src/analytics_service/analytics_api.py` — Analytics Service (Supporting)
 
-**Purpose:** ML anomaly detection using linear regression.
+**Purpose:** ML prediction of energy consumption and revenue via linear regression.
 
 | Endpoint | Description |
 |---|---|
 | `GET /analytics/health` | Health check |
-| `POST /analytics/predict` | Predict expected kWh based on duration |
-| `POST /analytics/detect` | Compare actual vs expected → flag deviations > 40% |
+| `POST /analytics/predict-energy` | Predict kWh based on duration, temperature and time of day |
+| `POST /analytics/predict-revenue` | Predict revenue based on same features + kWh price and number of sessions |
 
-**ML model:** Trained on simulated data (10-300 min, 2-75 kWh).  
-Sessions deviating >40% from expected are flagged as **anomalies**.
+**ML model:** LinearRegression with 3 features (duration_minutes, temperature, hour_of_day).  
+Trained on simulated data (12 samples).
 
 ---
 
@@ -154,21 +154,19 @@ Sessions deviating >40% from expected are flagged as **anomalies**.
 - `fastapi` + `uvicorn` (web server)
 - `pydantic` (data validation)
 - `scikit-learn` + `numpy` (ML)
-- `mysql-connector-python` (MySQL driver for production)
+- `mysql-connector-python` (MySQL driver — installed but not used)
 - `pytest` + `httpx` (testing)
 
 ### Environment variables (`.env.example`)
 
 - **`session_service/.env.example`**
-  - `DATABASE_URL`: MySQL connection string (optional).
+  - `DATABASE_URL`: Database connection string (SQLite is used by default).
 
 - **`billing_service/.env.example`**
-  - `ENERGY_RATE`: DKK per kWh.
-  - `PARKING_RATE`: DKK per minute.
-  - `PARKING_FREE_MINUTES`: Free parking minutes.
+  - Prices are hardcoded in `tariff.py` — no environment variables required.
 
 - **`analytics_service/.env.example`**
-  - `ANOMALY_THRESHOLD`: Anomaly threshold percentage.
+  - ML model trained on simulated data — no environment variables required.
 
 ---
 
@@ -195,37 +193,16 @@ python -m venv venv
 # source venv/bin/activate  # Mac / Linux
 
 # 4. Install dependencies
-cd src
-pip install -r requirements.txt
+pip install -r src/requirements.txt
 
 # 5. Start the server (all 3 services in one app)
-uvicorn main:app --reload --port 8000
+uvicorn src.main:app --reload --port 8000
 
 # 6. Open Swagger UI in your browser:
 #    http://localhost:8000/docs
 ```
 
-That's it — the SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.  
-For MySQL, set `DATABASE_URL=mysql://user:password@host:3306/voltedge` in your environment.
-
-### Option B — Run services individually
-
-```bash
-# Terminal 1: session-service
-cd src/session_service
-pip install -r requirements.txt
-uvicorn session_api:app --reload --port 8000
-
-# Terminal 2: billing-service
-cd src/billing_service
-pip install -r requirements.txt
-uvicorn billing_api:app --reload --port 8001
-
-# Terminal 3: analytics-service
-cd src/analytics_service
-pip install -r requirements.txt
-uvicorn analytics_api:app --reload --port 8002
-```
+That's it — the SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.
 
 ---
 
@@ -279,15 +256,15 @@ curl -X POST http://localhost:8000/sessions/start \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1"}'
 
-# ML prediction
-curl -X POST http://localhost:8000/analytics/predict \
+# ML predict energy
+curl -X POST http://localhost:8000/analytics/predict-energy \
   -H "Content-Type: application/json" \
-  -d '{"duration_minutes": 60}'
+  -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14}'
 
-# ML anomaly detection
-curl -X POST http://localhost:8000/analytics/detect \
+# ML predict revenue
+curl -X POST http://localhost:8000/analytics/predict-revenue \
   -H "Content-Type: application/json" \
-  -d '{"session_id": "test-1", "energy_delivered": 2.0, "duration_minutes": 60}'
+  -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 ```
 
 **Live deployment URL:**  
@@ -302,11 +279,11 @@ curl -X POST http://localhost:8000/analytics/detect \
 3. Set the `base_url` variable to your Azure URL or `http://localhost:8000`
 4. Run requests in sequence (each step depends on the previous)
 
-The collection includes 12 requests across 4 groups:
+The collection includes requests across 4 groups:
 - Health checks (all services)
-- Session Happy Path (start → authorize → start-charging → complete)
+- Session Happy Path (start → authorize → start-charging → complete → rate → invoice)
 - Billing (rate → invoice)
-- Analytics (predict → detect)
+- Analytics (predict-energy → predict-revenue)
 
 ---
 
@@ -316,42 +293,26 @@ The collection includes 12 requests across 4 groups:
 python -m pytest tests/ -v
 ```
 
-All 19 tests across 3 services:
+All 14 tests across 3 services:
 - `tests/test_session_service.py` (6 tests) — state machine transitions
-- `tests/test_billing_service.py` (6 tests) — price calculation accuracy
-- `tests/test_analytics_service.py` (7 tests) — ML prediction and anomaly detection
+- `tests/test_billing_service.py` (4 tests) — price calculation accuracy
+- `tests/test_analytics_service.py` (4 tests) — ML prediction (energy + revenue)
 
 ---
 
-## Database: MySQL (Production) / SQLite (Local Dev)
+## Database: SQLite
 
-### Why MySQL for production?
+The project uses **SQLite** both locally and in production. No database setup is required — `voltedge.db` is created automatically in `src/` on app startup via `init_db()`.
 
-| Requirement | MySQL (Azure Flexible Server) | SQLite (local dev) |
-|---|---|---|
-| **Persistence on Azure** | ✅ Data survives restarts/scaling | ❌ Ephemeral storage — data lost |
-| **Setup complexity** | Azure Portal wizard — 5 min | Zero setup — just a file |
-| **Cost** | **Free tier** (B1ms, 12 months) | **Free** |
-| **Concurrent access** | Multi-user, connection pooling | Single-writer only |
-| **Exam relevance** | Demonstrates real-world DB architecture | Quick local iteration |
+### Why SQLite?
 
-### Decision
+| Benefit | Description |
+|---------|-------------|
+| **Zero setup** | No database server, no connection configuration |
+| **Portable** | Single file — easy to share and version |
+| **Good enough for MVP** | No concurrent writes = SQLite is sufficient |
 
-The app uses **MySQL** when deployed on Azure via the `DATABASE_URL` environment variable, and falls back to **SQLite** automatically when developing locally (no config needed).
-
-### Production path — Azure Database for MySQL Flexible Server
-
-1. Go to **Azure Portal → Create a resource → Azure Database for MySQL Flexible Server**
-2. Select **Free tier** (B1ms, 1 vCore, 2 GB RAM, 32 GB storage)
-3. Create a database named `voltedge`
-4. In **Networking**, add firewall rule: "Allow public access from Azure services"
-5. Get the connection string: `mysql://user:password@server.mysql.database.azure.com:3306/voltedge`
-6. Set as `DATABASE_URL` in Azure Portal: **App Service → Settings → Environment variables**
-
-### Local development
-
-No setup needed — SQLite is used automatically when `DATABASE_URL` is not set.
-The database file `voltedge.db` is created in `src/` automatically on app startup via `init_db()`.
+> **Note:** The code also supports MySQL via `DATABASE_URL=mysql://...`, but it is not currently in use.
 
 ---
 
@@ -374,10 +335,7 @@ GitHub Actions workflow (`.github/workflows/main_voltedge-app.yml`):
 2. **Deploy to Azure Web App** using publish profile credentials
 
 ### Database creation (automatic)
-The database is **not** provisioned by the CI/CD pipeline itself — instead, it is created **at application startup** via the `init_db()` function in `src/shared/database.py`. This means:
-
-- **SQLite** (local dev): `voltedge.db` is created automatically in `src/` on first request
-- **MySQL** (production via `DATABASE_URL`): The `CREATE TABLE IF NOT EXISTS` statements run on app start, ensuring tables exist without manual setup
+The database is **not** provisioned by the CI/CD pipeline itself — instead, it is created **at application startup** via the `init_db()` function in `src/shared/database.py`. This means `voltedge.db` is created automatically on first request.
 
 This approach makes the database fully automated as part of the deployment — no separate provisioning step needed.
 
@@ -434,6 +392,7 @@ Set in Azure Portal → Configuration → General Settings:
 ```
 cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+*(Note: locally we run with `uvicorn src.main:app --reload --port 8000`)*
 
 ---
 
@@ -451,13 +410,13 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   ├── billing_api.py            # Rating + invoice endpoints
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── analytics_service/            # Supporting — ML anomaly detection
+│   ├── analytics_service/            # Supporting — ML prediction (energy + revenue)
 │   │   ├── analytics_api.py          # Linear regression model + endpoints
 │   │   ├── .env.example
 │   │   └── __init__.py
 │   └── shared/
 │       ├── events.py                 # Shared event models
-│   ├── database.py               # MySQL / SQLite database helper
+│   │   └── database.py               # SQLite database helper (MySQL also supported)
 │       └── __init__.py
 ├── .github/workflows/                # GitHub Actions CI/CD
 ├── requirements.txt                  # Root requirements (references src/)
@@ -471,8 +430,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 - `src/*/.env.example` — templates for local environment variables
 - GitHub Secrets: publish profile credentials configured via Azure Deployment Center
 - No secrets in source code — only `.env.example` templates
-- Database is created automatically as SQLite for local dev — no credentials needed
-- For production, set `DATABASE_URL=mysql://user:password@host:3306/voltedge` as an Azure App Setting
+- Database is created automatically as SQLite — no credentials needed
 
 ---
 

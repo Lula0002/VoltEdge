@@ -17,11 +17,11 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "VoltEdge Mobility MVP API — DDD-baseret arkitektur med adskilte Bounded Contexts (Session, Billing, Analytics).\n\n"
-        "**Session Context**: Ejer ChargingSession aggregate og state-maskinen.\n"
-        "**Billing Context**: Ejer Invoice aggregate og håndterer prissætning uafhængigt.\n"
-        "**Analytics Context**: ML-forudsigelse af strømforbrug og indtjening via lineær regression (features: varighed, vejr, tidspunkt).\n\n"
-        "**Bemærk**: Billing Context er nu en selvstændig Bounded Context med egen persistens."
+        "VoltEdge Mobility MVP API — DDD-based architecture with separate Bounded Contexts (Session, Billing, Analytics).\n\n"
+        "**Session Context**: Owns the ChargingSession aggregate and state machine.\n"
+        "**Billing Context**: Owns the Invoice aggregate and handles pricing independently.\n"
+        "**Analytics Context**: ML-based prediction of energy consumption and revenue via linear regression (features: duration, weather, time of day).\n\n"
+        "**Note**: Billing Context is now an independent Bounded Context with its own persistence."
     ),
     version="1.0.1",
     docs_url="/docs",
@@ -42,17 +42,15 @@ async def auto_flow(req: AutoFlowRequest):
 
     Steps:
     1. Create session (Created)
-    2. Authorize (Authorized)
-    3. Start charging (Charging)
-    4. Complete with meter data (Completed)
-    5. Calculate price (Rated)
-    6. Generate invoice (Invoiced)
+    2. Start charging (Charging)
+    3. Complete with meter data (Completed)
+    4. Calculate price (Rated)
+    5. Generate invoice (Invoiced)
 
     Returns the full trace from start to finish.
     """
     from session_service.session_api import (
         start_session,
-        authorize_session,
         start_charging,
         complete_session,
         rate_session,
@@ -68,13 +66,10 @@ async def auto_flow(req: AutoFlowRequest):
     ))
     session_id = started.session_id
 
-    # Step 2: Authorize
-    authorized = await authorize_session(session_id)
-
-    # Step 3: Start charging
+    # Step 2: Start charging
     charging = await start_charging(session_id)
 
-    # Step 4: Complete with meter data
+    # Step 3: Complete with meter data
     validated = await complete_session(
         session_id,
         CompleteSessionRequest(
@@ -83,15 +78,14 @@ async def auto_flow(req: AutoFlowRequest):
         ),
     )
 
-    # Step 5: Rate session (session service owns state transition)
+    # Step 4: Rate session (session service owns state transition)
     rated = await rate_session(session_id)
 
-    # Step 6: Generate invoice (session service owns state transition)
+    # Step 5: Generate invoice (session service owns state transition)
     invoiced = await create_invoice(session_id)
 
     return {
         "session_started": started.model_dump(),
-        "authorized": authorized,
         "charging_started": charging,
         "session_validated": validated.model_dump(),
         "session_rated": rated.model_dump(),

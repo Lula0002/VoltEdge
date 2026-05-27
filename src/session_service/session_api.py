@@ -71,30 +71,6 @@ async def start_session(req: StartSessionRequest):
     )
 
 
-@router.post("/{session_id}/authorize")
-async def authorize_session(session_id: str):
-    conn = get_connection()
-    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
-    row = cursor.fetchone()
-    cursor.close()
-
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    session = _session_from_row(row)
-    if session.status != SessionStatus.CREATED:
-        conn.close()
-        raise HTTPException(status_code=400, detail=f"Cannot authorize in status {session.status.value}")
-
-    execute(conn, "UPDATE sessions SET status = ? WHERE session_id = ?",
-            (SessionStatus.AUTHORIZED.value, session_id))
-    conn.commit()
-    conn.close()
-
-    return {"session_id": session_id, "status": SessionStatus.AUTHORIZED.value}
-
-
 @router.post("/{session_id}/start-charging")
 async def start_charging(session_id: str):
     conn = get_connection()
@@ -107,7 +83,7 @@ async def start_charging(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     session = _session_from_row(row)
-    if session.status != SessionStatus.AUTHORIZED:
+    if session.status != SessionStatus.CREATED:
         conn.close()
         raise HTTPException(status_code=400, detail=f"Cannot start charging in status {session.status.value}")
 

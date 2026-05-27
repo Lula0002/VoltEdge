@@ -1,4 +1,4 @@
-"""Tariff — Regelsæt for prissætning (time-of-use, abonnement, fleet-aftale)
+"""Tariff — Pricing rules (time-of-use, subscription, fleet agreement)
 
 Ubiquitous Language: Tariff defines the pricing rules applied during Rating.
 """
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Tariff:
-    """Regelsæt for prissætning.
+    """Pricing rules for charging sessions.
 
     Default: 2.45 DKK/kWh energy + 0.50 DKK/min parking after 10 free minutes.
     """

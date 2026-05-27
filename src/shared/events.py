@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 class SessionStatus(str, Enum):
     CREATED = "Created"
-    AUTHORIZED = "Authorized"
     CHARGING = "Charging"
     COMPLETED = "Completed"
     RATED = "Rated"

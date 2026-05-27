@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from analytics_service.ml_model import predict_energy_kwh
 
-router = APIRouter(prefix="/analytics", tags=["analytics (ml) - external capability"])
+router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
 
 
 # ── Request/Response Models ──────────────────────────────────
@@ -47,7 +47,7 @@ async def predict_energy(req: PredictEnergyRequest):
         },
         "predicted_energy_kwh": round(predicted_kwh, 2),
         "model": "LinearRegression",
-        "note": "Prediction based on simulated training data"
+        "note": "Prediction based on simulated training data",
     }
 
 
@@ -85,5 +85,5 @@ async def predict_revenue(req: RevenueRequest):
             "avg_revenue_per_session_dkk": round(total_cost_dkk / req.num_sessions, 2),
         },
         "model": "LinearRegression",
-        "note": "Prediction based on simulated data. With real historical data the model can be improved."
+        "note": "Prediction based on simulated data. With real historical data the model can be improved.",
     }

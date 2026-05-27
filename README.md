@@ -42,7 +42,7 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 | Modul | Rolle i Bounded Context | URL prefix | Responsibility |
 |---|---|---|---|
 | **Session** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed |
-| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tariff calculation + invoice generation |
+| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tariff calculation + invoice generation (BI ready) |
 | **Analytics/ML** | 🚫 External capability (API only) | `/analytics/*` | ML prediction — HTTP only |
 
 > **DDD note — Bounded Context:**  
@@ -154,6 +154,8 @@ Swagger at: `http://localhost:8000/docs`
 **ML model:** LinearRegression with 3 features (duration_minutes, temperature, hour_of_day).  
 Trained on simulated data (12 samples).  
 *Isolated in `ml_model.py` — separate from core microservice logic.*
+
+> 🔍 **Proof of external capability:** Each analytics response includes an `http_request` field showing method, URL, and the note that this service can **only** be accessed via HTTP — never imported directly by Session/Billing.
 
 ---
 
@@ -269,11 +271,16 @@ curl -X POST http://localhost:8000/analytics/predict-revenue \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 
-# 🎯 Full Happy Path + Analytics via HTTP (demonstrates external capability)
-# This endpoint demonstrates that Analytics can only be accessed via HTTP — not direct import
-curl -X POST http://localhost:8000/auto-flow-with-ml \
+# 🎯 Analytics (external capability via HTTP)
+# Each analytics response includes HTTP request details proving it's an API endpoint
+curl -X POST http://localhost:8000/analytics/predict-energy \
   -H "Content-Type: application/json" \
-  -d '{"charger_id": "charger-1", "contract_id": "contract-1", "energy_delivered": 25.5, "duration_minutes": 60}'
+  -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14}'
+
+# ML predict revenue (external capability via HTTP)
+curl -X POST http://localhost:8000/analytics/predict-revenue \
+  -H "Content-Type: application/json" \
+  -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 ```
 
 **Live deployment URL:**  

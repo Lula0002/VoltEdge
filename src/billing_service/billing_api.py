@@ -18,7 +18,7 @@ from billing_service.rating_service import RatingService, default_rating_service
 # Ensure database tables exist
 init_db()
 
-router = APIRouter(prefix="/billing", tags=["billing"])
+router = APIRouter(prefix="/billing", tags=["Charging Session"])
 
 
 class RateRequest(BaseModel):

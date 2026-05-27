@@ -19,7 +19,7 @@ from billing_service.billing_api import calculate_price
 # Initialize database tables on module load
 init_db()
 
-router = APIRouter(prefix="/sessions", tags=["sessions"])
+router = APIRouter(prefix="/sessions", tags=["Charging Session"])
 
 
 class StartSessionRequest(BaseModel):

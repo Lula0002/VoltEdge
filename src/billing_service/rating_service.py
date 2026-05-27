@@ -3,6 +3,7 @@
 Ubiquitous Language: Rating is the domain service that applies a Tariff to a session.
 """
 
+from __future__ import annotations
 from billing_service.tariff import Tariff
 
 

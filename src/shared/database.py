@@ -5,6 +5,7 @@ Usage:
     DATABASE_URL=     (unset)                              → SQLite (local dev)
 """
 
+from __future__ import annotations
 import os
 import re
 from pathlib import Path
@@ -115,6 +116,30 @@ def init_db():
                 duration_minutes  INTEGER,
                 total_cost       REAL,
                 invoice_id       TEXT
+            )
+        """)
+
+    # ── Create invoices table ──
+    if _is_mysql(conn):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                invoice_id     VARCHAR(36)  PRIMARY KEY,
+                session_id     VARCHAR(36)  NOT NULL,
+                amount         DOUBLE       NOT NULL,
+                currency       VARCHAR(10)  NOT NULL DEFAULT 'DKK',
+                status         VARCHAR(50)  NOT NULL DEFAULT 'Generated',
+                timestamp      VARCHAR(50)  NOT NULL
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                invoice_id       TEXT PRIMARY KEY,
+                session_id       TEXT NOT NULL,
+                amount           REAL NOT NULL,
+                currency         TEXT NOT NULL DEFAULT 'DKK',
+                status           TEXT NOT NULL DEFAULT 'Generated',
+                timestamp        TEXT NOT NULL
             )
         """)
 

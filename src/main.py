@@ -1,7 +1,10 @@
 """VoltEdge MVP — Combined FastAPI Application
 
-Session + Billing run together as the core microservice.
-Analytics/ML is a separate standalone service (external capability on port 8001).
+All 3 services run in one Azure Web App on a single port.
+
+Analytics/ML is presented as an **external capability** offered to customers
+via its own API endpoints (/analytics/*). The ML model is isolated in
+ml_model.py — separate from the core Session and Billing logic.
 """
 
 import sys
@@ -17,13 +20,15 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "VoltEdge Mobility MVP API — Core microservice (Session + Billing).\n\n"
-        "**Session Context**: Owns the ChargingSession aggregate and state machine.\n"
-        "**Billing Context**: Owns the Invoice aggregate and handles pricing independently.\n\n"
-        "Analytics/ML is offered as a **separate external capability** on port 8001.\n"
-        "See: http://localhost:8001/docs"
+        "VoltEdge Mobility MVP API — DDD-based architecture with 3 Bounded Contexts.\n\n"
+        "**Session Context** — Owns the ChargingSession aggregate and state machine.\n"
+        "**Billing Context** — Owns the Invoice aggregate and handles pricing independently.\n"
+        "**Analytics Context** — ML prediction capability (energy & revenue) offered as an\n"
+        "external service via dedicated API endpoints. The ML model is isolated from the\n"
+        "core microservice logic.\n\n"
+        "All services run in one Azure Web App for deployment simplicity."
     ),
-    version="1.0.2",
+    version="1.0.3",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -102,9 +107,11 @@ app.add_middleware(
 
 
 
-# Import and register Session + Billing routers only
+# Import and register all 3 service routers
 from session_service.session_api import router as session_router
 from billing_service.billing_api import router as billing_router
+from analytics_service.analytics_api import router as analytics_router
 
 app.include_router(session_router)
 app.include_router(billing_router)
+app.include_router(analytics_router)

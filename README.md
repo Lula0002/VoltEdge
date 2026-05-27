@@ -37,28 +37,18 @@ The **ChargingSession** aggregate follows a state machine through 5 statuses:
 
 ## Architecture
 
-### Core Microservice (Session + Billing) — port 8000
-
-Session and Billing run together as the **core microservice**:
+All 3 services run in a **single Azure Web App** on one port — each with its own URL prefix:
 
 | Service | Type | URL prefix | Responsibility |
 |---|---|---|---|
 | **session-service** | Core | `/sessions/*` | ChargingSession aggregate + state machine |
 | **billing-service** | Generic | `/billing/*` | Tariff rating + invoice line generation |
+| **analytics-service** | External capability | `/analytics/*` | ML prediction (linear regression) — energy and revenue |
 
 > **DDD note — Bounded Context boundaries:**  
 > Session service owns the `ChargingSession` aggregate and its state machine (`Created → Charging → Completed`).  
 > Billing service is a **Bounded Context** that owns the `Invoice` aggregate. It handles its own state (`Generated`) and persists invoice data independently.  
-> Session service mirrors the `Rated` and `Invoiced` statuses for readability, but the Billing service is the **authoritative source** for all invoicing data.
-
-### External Capability (Analytics/ML) — port 8001
-
-The **Analytics ML Service** is a **separate standalone service** — an external capability offered to customers (e.g. Copenhagen Municipality). It runs independently and is not part of the core microservice.
-
-| Service | Port | Responsibility |
-|---|---|---|
-| **analytics-service** | `8001` | ML prediction (linear regression) — energy and revenue |
-
+> Analytics is an **external capability** offered to customers via API — the ML model is isolated in `ml_model.py`, separate from core microservice logic.
 
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
@@ -91,14 +81,9 @@ The **Analytics ML Service** is a **separate standalone service** — an externa
 ### `src/` — Python application
 
 #### `src/main.py`
-**Entry point for core microservice (Session + Billing).**  
+**Entry point.** All 3 services run in one FastAPI app.  
 Run with: `uvicorn src.main:app --reload --port 8000`  
 Swagger at: `http://localhost:8000/docs`
-
-#### `src/analytics_service/main.py`
-**Entry point for standalone Analytics ML service.**  
-Run with: `uvicorn src.analytics_service.main:app --reload --port 8001`  
-Swagger at: `http://localhost:8001/docs`
 
 #### `src/shared/events.py`
 **Shared event models** used across all services:  
@@ -158,7 +143,8 @@ Swagger at: `http://localhost:8001/docs`
 | `POST /analytics/predict-revenue` | Predict revenue based on same features + kWh price and number of sessions |
 
 **ML model:** LinearRegression with 3 features (duration_minutes, temperature, hour_of_day).  
-Trained on simulated data (12 samples).
+Trained on simulated data (12 samples).  
+*Isolated in `ml_model.py` — separate from core microservice logic.*
 
 ---
 
@@ -209,15 +195,11 @@ python -m venv venv
 # 4. Install dependencies
 pip install -r src/requirements.txt
 
-# 5a. Start the core microservice (Session + Billing) — Terminal 1
+# 5. Start the server (all 3 services in one app)
 uvicorn src.main:app --reload --port 8000
 
-# 5b. Start the Analytics ML service (external capability) — Terminal 2
-uvicorn src.analytics_service.main:app --reload --port 8001
-
-# 6. Open Swagger UI in your browser:
-#    Core:  http://localhost:8000/docs
-#    ML:    http://localhost:8001/docs
+# 6. Open Swagger UI:
+#    http://localhost:8000/docs
 ```
 
 SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.
@@ -272,13 +254,13 @@ curl -X POST http://localhost:8000/sessions/start \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1"}'
 
-# ML predict energy (Analytics runs on port 8001)
-curl -X POST http://localhost:8001/analytics/predict-energy \
+# ML predict energy
+curl -X POST http://localhost:8000/analytics/predict-energy \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14}'
 
-# ML predict revenue (Analytics runs on port 8001)
-curl -X POST http://localhost:8001/analytics/predict-revenue \
+# ML predict revenue
+curl -X POST http://localhost:8000/analytics/predict-revenue \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 ```
@@ -370,16 +352,10 @@ python -m venv venv                    # Create virtual environment
 .\venv\Scripts\Activate                # Activate venv (Windows)
 ```
 
-### Run servers
+### Run server
 
-**Core microservice (Session + Billing):**
 ```bash
 uvicorn src.main:app --reload --port 8000
-```
-
-**Analytics ML service (external capability):**
-```bash
-uvicorn src.analytics_service.main:app --reload --port 8001
 ```
 
 ### Run tests
@@ -403,13 +379,12 @@ git push                                     # Push commits
 git status                                   # Show working tree status
 ```
 
-### Azure Startup Command (core microservice only)
+### Azure Startup Command
 
 Set in Azure Portal → Configuration → General Settings:
 ```
 cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-*(Analytics ML service runs separately as an external capability)*
 
 ---
 
@@ -417,7 +392,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 
 ```
 ├── src/
-│   ├── main.py                       # Core microservice entry point (Session + Billing)
+│   ├── main.py                       # FastAPI entry point (Session, Billing, Analytics)
 │   ├── requirements.txt              # Python dependencies
 │   ├── session_service/              # Core — ChargingSession aggregate
 │   │   ├── session_api.py            # FastAPI endpoints + state machine
@@ -429,8 +404,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   ├── rating_service.py         # Domain service
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── analytics_service/            # External ML capability (standalone on port 8001)
-│   │   ├── main.py                   # Standalone FastAPI app entry point
+│   ├── analytics_service/            # External ML capability (via API)
 │   │   ├── analytics_api.py          # ML prediction endpoints
 │   │   ├── ml_model.py               # Linear regression model (isolated)
 │   │   ├── .env.example

@@ -1,7 +1,7 @@
 """VoltEdge MVP — Combined FastAPI Application
 
-All 3 services run in a single Azure Web App.
-Each service has its own URL prefix.
+Session + Billing run together as the core microservice.
+Analytics/ML is a separate standalone service (external capability on port 8001).
 """
 
 import sys
@@ -17,13 +17,13 @@ from pydantic import BaseModel, Field
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "VoltEdge Mobility MVP API — DDD-based architecture with separate Bounded Contexts (Session, Billing, Analytics).\n\n"
+        "VoltEdge Mobility MVP API — Core microservice (Session + Billing).\n\n"
         "**Session Context**: Owns the ChargingSession aggregate and state machine.\n"
-        "**Billing Context**: Owns the Invoice aggregate and handles pricing independently.\n"
-        "**Analytics Context**: ML-based prediction of energy consumption and revenue via linear regression (features: duration, weather, time of day).\n\n"
-        "**Note**: Billing Context is now an independent Bounded Context with its own persistence."
+        "**Billing Context**: Owns the Invoice aggregate and handles pricing independently.\n\n"
+        "Analytics/ML is offered as a **separate external capability** on port 8001.\n"
+        "See: http://localhost:8001/docs"
     ),
-    version="1.0.1",
+    version="1.0.2",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -102,11 +102,9 @@ app.add_middleware(
 
 
 
-# Import and register service routers
+# Import and register Session + Billing routers only
 from session_service.session_api import router as session_router
 from billing_service.billing_api import router as billing_router
-from analytics_service.analytics_api import router as analytics_router
 
 app.include_router(session_router)
 app.include_router(billing_router)
-app.include_router(analytics_router)

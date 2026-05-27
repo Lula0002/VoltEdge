@@ -5,7 +5,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 
 ## Table of Contents
 
-1. [Happy Path](#happy-path-6-steps)
+1. [Happy Path](#happy-path-5-steps)
 2. [Architecture](#architecture)
 3. [Tech Stack](#tech-stack)
 4. [Code Structure](#code-structure)
@@ -13,7 +13,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 6. [Test the Full Flow](#test-the-full-flow)
 7. [Testing with Postman](#testing-with-postman)
 8. [Run Unit Tests](#run-unit-tests)
-9. [Database: MySQL / SQLite](#database-mysql-production--sqlite-local-dev)
+9. [Database](#database-sqlite)
 10. [CI/CD Pipeline](#cicd-pipeline)
 11. [Command Reference](#command-reference)
 12. [Secrets Management](#secrets-management)
@@ -37,18 +37,28 @@ The **ChargingSession** aggregate follows a state machine through 5 statuses:
 
 ## Architecture
 
-All 3 services run in a **single Azure Web App** and are accessible via URL prefixes:
+### Core Microservice (Session + Billing) — port 8000
+
+Session and Billing run together as the **core microservice**:
 
 | Service | Type | URL prefix | Responsibility |
 |---|---|---|---|
 | **session-service** | Core | `/sessions/*` | ChargingSession aggregate + state machine |
 | **billing-service** | Generic | `/billing/*` | Tariff rating + invoice line generation |
-| **analytics-service** | Supporting | `/analytics/*` | ML prediction (linear regression) — energy and revenue |
 
 > **DDD note — Bounded Context boundaries:**  
 > Session service owns the `ChargingSession` aggregate and its state machine (`Created → Charging → Completed`).  
 > Billing service is a **Bounded Context** that owns the `Invoice` aggregate. It handles its own state (`Generated`) and persists invoice data independently.  
 > Session service mirrors the `Rated` and `Invoiced` statuses for readability, but the Billing service is the **authoritative source** for all invoicing data.
+
+### External Capability (Analytics/ML) — port 8001
+
+The **Analytics ML Service** is a **separate standalone service** — an external capability offered to customers (e.g. Copenhagen Municipality). It runs independently and is not part of the core microservice.
+
+| Service | Port | Responsibility |
+|---|---|---|
+| **analytics-service** | `8001` | ML prediction (linear regression) — energy and revenue |
+
 
 **Azure Web App (live):**  
 [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
@@ -63,7 +73,7 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 - **Database:** SQLite (both local and in production)
 - **Cloud:** Microsoft Azure (App Service) — code-based deployment
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
-- **ML:** Scikit-learn Linear Regression (domain service)
+- **ML:** Scikit-learn Linear Regression (separate standalone service)
 - **Secrets:** `.env.example` + GitHub Secrets
 
 ---
@@ -81,9 +91,14 @@ All 3 services run in a **single Azure Web App** and are accessible via URL pref
 ### `src/` — Python application
 
 #### `src/main.py`
-**Entry point.** Combines all 3 services into a single FastAPI app.  
-Run with: `uvicorn main:app --reload --port 8000`  
+**Entry point for core microservice (Session + Billing).**  
+Run with: `uvicorn src.main:app --reload --port 8000`  
 Swagger at: `http://localhost:8000/docs`
+
+#### `src/analytics_service/main.py`
+**Entry point for standalone Analytics ML service.**  
+Run with: `uvicorn src.analytics_service.main:app --reload --port 8001`  
+Swagger at: `http://localhost:8001/docs`
 
 #### `src/shared/events.py`
 **Shared event models** used across all services:  
@@ -104,14 +119,13 @@ Swagger at: `http://localhost:8000/docs`
 |---|---|
 | `GET /sessions/health` | Health check |
 | `POST /sessions/start` | Create new session → status: `Created` |
-| `POST /sessions/{id}/authorize` | Authorize → status: `Authorized` |
 | `POST /sessions/{id}/start-charging` | Start charging → status: `Charging` |
 | `POST /sessions/{id}/complete` | Complete → status: `Completed` |
 | `POST /sessions/{id}/rate` | Calculate price → status: `Rated` |
 | `POST /sessions/{id}/invoice` | Generate invoice → status: `Invoiced` |
 | `GET /sessions/{id}` | Get session data |
 
-**State machine:** `Created → Authorized → Charging → Completed → Rated → Invoiced`  
+**State machine:** `Created → Charging → Completed → Rated → Invoiced`  
 *(Note: Rated/Invoiced statuses are mirrored from Billing Context. Billing is the authoritative source for invoice data.)*
 
 
@@ -195,14 +209,18 @@ python -m venv venv
 # 4. Install dependencies
 pip install -r src/requirements.txt
 
-# 5. Start the server (all 3 services in one app)
+# 5a. Start the core microservice (Session + Billing) — Terminal 1
 uvicorn src.main:app --reload --port 8000
 
+# 5b. Start the Analytics ML service (external capability) — Terminal 2
+uvicorn src.analytics_service.main:app --reload --port 8001
+
 # 6. Open Swagger UI in your browser:
-#    http://localhost:8000/docs
+#    Core:  http://localhost:8000/docs
+#    ML:    http://localhost:8001/docs
 ```
 
-That's it — the SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.
+SQLite database (`voltedge.db`) is created automatically on app startup via `init_db()`.
 
 ---
 
@@ -221,23 +239,21 @@ POST /sessions/start
 {"charger_id": "charger-1", "contract_id": "contract-1"}
 ```
 
-**Step 2 — Authorize:** `POST /sessions/{session_id}/authorize`
+**Step 2 — Start charging:** `POST /sessions/{session_id}/start-charging`
 
-**Step 3 — Start charging:** `POST /sessions/{session_id}/start-charging`
-
-**Step 4 — Complete:**
+**Step 3 — Complete:**
 ```json
 POST /sessions/{session_id}/complete
 {"energy_delivered": 25.5, "duration_minutes": 60}
 ```
 
-**Step 5 — Rate (transition to Rated):**
+**Step 4 — Rate (transition to Rated):**
 ```
 POST /sessions/{session_id}/rate
 ```
 No body required — reads meter data from the session automatically.
 
-**Step 6 — Invoice (transition to Invoiced):**
+**Step 5 — Invoice (transition to Invoiced):**
 ```
 POST /sessions/{session_id}/invoice
 ```
@@ -256,13 +272,13 @@ curl -X POST http://localhost:8000/sessions/start \
   -H "Content-Type: application/json" \
   -d '{"charger_id": "charger-1", "contract_id": "contract-1"}'
 
-# ML predict energy
-curl -X POST http://localhost:8000/analytics/predict-energy \
+# ML predict energy (Analytics runs on port 8001)
+curl -X POST http://localhost:8001/analytics/predict-energy \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14}'
 
-# ML predict revenue
-curl -X POST http://localhost:8000/analytics/predict-revenue \
+# ML predict revenue (Analytics runs on port 8001)
+curl -X POST http://localhost:8001/analytics/predict-revenue \
   -H "Content-Type: application/json" \
   -d '{"duration_minutes": 60, "temperature": 15, "hour_of_day": 14, "kwh_price": 2.45, "num_sessions": 100, "num_chargers": 10}'
 ```
@@ -281,7 +297,7 @@ curl -X POST http://localhost:8000/analytics/predict-revenue \
 
 The collection includes requests across 4 groups:
 - Health checks (all services)
-- Session Happy Path (start → authorize → start-charging → complete → rate → invoice)
+- Session Happy Path (start → start-charging → complete → rate → invoice)
 - Billing (rate → invoice)
 - Analytics (predict-energy → predict-revenue)
 
@@ -293,9 +309,9 @@ The collection includes requests across 4 groups:
 python -m pytest tests/ -v
 ```
 
-All 14 tests across 3 services:
-- `tests/test_session_service.py` (6 tests) — state machine transitions
-- `tests/test_billing_service.py` (4 tests) — price calculation accuracy
+All 13 tests across 3 services:
+- `tests/test_session_service.py` (4 tests) — state machine transitions
+- `tests/test_billing_service.py` (5 tests) — price calculation accuracy
 - `tests/test_analytics_service.py` (4 tests) — ML prediction (energy + revenue)
 
 ---
@@ -354,16 +370,17 @@ python -m venv venv                    # Create virtual environment
 .\venv\Scripts\Activate                # Activate venv (Windows)
 ```
 
-### Run server
+### Run servers
 
+**Core microservice (Session + Billing):**
 ```bash
-cd src && uvicorn main:app --reload --port 8000
+uvicorn src.main:app --reload --port 8000
 ```
 
-- `cd src` — enter source directory
-- `uvicorn main:app` — start server with `app` from `main.py`
-- `--reload` — auto-restart on file changes
-- `--port 8000` — listen on port 8000
+**Analytics ML service (external capability):**
+```bash
+uvicorn src.analytics_service.main:app --reload --port 8001
+```
 
 ### Run tests
 
@@ -386,13 +403,13 @@ git push                                     # Push commits
 git status                                   # Show working tree status
 ```
 
-### Azure Startup Command
+### Azure Startup Command (core microservice only)
 
 Set in Azure Portal → Configuration → General Settings:
 ```
 cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-*(Note: locally we run with `uvicorn src.main:app --reload --port 8000`)*
+*(Analytics ML service runs separately as an external capability)*
 
 ---
 
@@ -400,7 +417,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 
 ```
 ├── src/
-│   ├── main.py                       # Combined FastAPI app (entry point)
+│   ├── main.py                       # Core microservice entry point (Session + Billing)
 │   ├── requirements.txt              # Python dependencies
 │   ├── session_service/              # Core — ChargingSession aggregate
 │   │   ├── session_api.py            # FastAPI endpoints + state machine
@@ -408,16 +425,24 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   └── __init__.py
 │   ├── billing_service/              # Generic — Tariff & Invoice
 │   │   ├── billing_api.py            # Rating + invoice endpoints
+│   │   ├── tariff.py                 # Pricing rules (Value Object)
+│   │   ├── rating_service.py         # Domain service
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── analytics_service/            # Supporting — ML prediction (energy + revenue)
-│   │   ├── analytics_api.py          # Linear regression model + endpoints
+│   ├── analytics_service/            # External ML capability (standalone on port 8001)
+│   │   ├── main.py                   # Standalone FastAPI app entry point
+│   │   ├── analytics_api.py          # ML prediction endpoints
+│   │   ├── ml_model.py               # Linear regression model (isolated)
 │   │   ├── .env.example
 │   │   └── __init__.py
 │   └── shared/
 │       ├── events.py                 # Shared event models
-│   │   └── database.py               # SQLite database helper (MySQL also supported)
+│       ├── database.py               # SQLite database helper
 │       └── __init__.py
+├── tests/                            # Unit tests
+│   ├── test_session_service.py
+│   ├── test_billing_service.py
+│   └── test_analytics_service.py
 ├── .github/workflows/                # GitHub Actions CI/CD
 ├── requirements.txt                  # Root requirements (references src/)
 └── README.md

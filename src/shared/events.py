@@ -14,7 +14,7 @@ class SessionStatus(str, Enum):
     INVOICED = "Invoiced"
 
 
-class ChargingSessionData(BaseModel):
+class SessionData(BaseModel):
     session_id: str
     charger_id: str
     contract_id: str

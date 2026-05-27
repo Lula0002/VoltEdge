@@ -1,4 +1,4 @@
-"""Session Service — ChargingSession aggregate with state machine"""
+"""Session Service — Session aggregate (Aggregate 1 of the Charging Session Bounded Context, SessionID as root)"""
 
 import uuid
 from datetime import datetime, timezone
@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from shared.events import (
-    ChargingSessionData,
+    SessionData,
     SessionStatus,
     SessionStarted,
     SessionRated,
@@ -32,8 +32,8 @@ class CompleteSessionRequest(BaseModel):
     duration_minutes: int = Field(examples=[60])
 
 
-def _session_from_row(row) -> ChargingSessionData:
-    return ChargingSessionData(
+def _session_from_row(row) -> SessionData:
+    return SessionData(
         session_id=row["session_id"],
         charger_id=row["charger_id"],
         contract_id=row["contract_id"],

@@ -26,7 +26,7 @@ This project demonstrates a **fully traceable data flow** from telemetry to invo
 Created → Charging → Completed → Rated → Invoiced
 ```
 
-The **ChargingSession** aggregate follows a state machine through 5 statuses:
+The **Session** aggregate (SessionID as root) follows a state machine through 5 statuses:
 1. **Created** — Session created with charger_id and contract_id
 2. **Charging** — Charging starts
 3. **Completed** — Charging completed with meter data (energy_delivered, duration_minutes)
@@ -41,14 +41,14 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 
 | Modul | Rolle i Bounded Context | URL prefix | Responsibility |
 |---|---|---|---|
-| **ChargingSession** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed |
-| **Invoice** | Aggregate 2 (Generic) | `/billing/*` | Tarifberegning + fakturagenerering |
+| **Session** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed |
+| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tarifberegning + fakturagenerering |
 | **Analytics/ML** | 🚫 External capability (kun via API) | `/analytics/*` | ML-prediction — KUN via HTTP |
 
 > **DDD note — Bounded Context:**  
 > **Charging Session** er **én** Bounded Context, der ejer **to aggregater**:  
-> - `ChargingSession` — styrer ladningens tilstandsmaskine (Created → Charging → Completed)  
-> - `Invoice` — håndterer prissætning og faktura (Rated → Invoiced)  
+> - **Aggregate 1:** `Session` — entity med **SessionID** som rod, styrer ladningens tilstandsmaskine (Created → Charging → Completed)  
+> - **Aggregate 2:** `InvoiceLine` — entity med **InvoiceID** som rod, håndterer prissætning og faktura (Rated → Invoiced)  
 >  
 > Analytics/ML er en **ekstern capability** — den kan **KUN** tilgås via HTTP/API-kald (`/analytics/*`).  
 > Der er ingen direkte Python-import mellem kerne-koden og ML-modellen — kun HTTP-kald.
@@ -103,9 +103,9 @@ Swagger at: `http://localhost:8000/docs`
 
 ---
 
-#### `src/session_service/session_api.py` — Aggregate 1: ChargingSession
+#### `src/session_service/session_api.py` — Aggregate 1: Session
 
-**Purpose:** Manages a charging session as a **state machine** (Aggregate 1 of the Charging Session Bounded Context).
+**Purpose:** Manages a charging session as a **state machine** (Aggregate 1: Session entity with SessionID as root of the Charging Session Bounded Context).
 
 | Endpoint | Description |
 |---|---|
@@ -122,9 +122,9 @@ Swagger at: `http://localhost:8000/docs`
 
 ---
 
-#### `src/billing_service/billing_api.py` — Aggregate 2: Invoice
+#### `src/billing_service/billing_api.py` — Aggregate 2: InvoiceLine
 
-**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2 of the Charging Session Bounded Context).
+**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2: InvoiceLine entity with InvoiceID as root of the Charging Session Bounded Context).
 
 | Endpoint | Description |
 |---|---|
@@ -405,11 +405,11 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 ├── src/
 │   ├── main.py                       # FastAPI entry point (Session, Billing, Analytics)
 │   ├── requirements.txt              # Python dependencies
-│   ├── session_service/              # Aggregate 1: ChargingSession
+│   ├── session_service/              # Aggregate 1: Session (SessionID as root)
 │   │   ├── session_api.py            # FastAPI endpoints + state machine
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── billing_service/              # Aggregate 2: Invoice
+│   ├── billing_service/              # Aggregate 2: InvoiceLine (InvoiceID as root)
 │   │   ├── billing_api.py            # Rating + invoice endpoints
 │   │   ├── tariff.py                 # Pricing rules (Value Object)
 │   │   ├── rating_service.py         # Domain service

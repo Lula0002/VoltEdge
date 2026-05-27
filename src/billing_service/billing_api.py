@@ -1,4 +1,4 @@
-"""Billing — Invoice aggregate (Aggregate 2 of the Charging Session Bounded Context).
+"""Billing — InvoiceLine entity (Aggregate 2 of the Charging Session Bounded Context, InvoiceID as root).
 
 Handles tariff rating, price calculation, and invoice persistence.
 """

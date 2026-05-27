@@ -65,6 +65,9 @@ All 3 services run in a **single Azure Web App** on one port — each with its o
 - **CI/CD:** GitHub Actions — automatic build, test, deploy and rollback
 - **ML:** Scikit-learn Linear Regression (external capability via API)
 - **Integration:** Session/Billing calls Analytics via HTTP (httpx) — proving separation
+- **BI-readiness:** GET endpoints (`/sessions/`, `/billing/invoices`) kan kaldes direkte fra Power BI, Excel, eller andre BI-værktøjer — både lokalt og på Azure
+- **CORS:** Aktiveret på tværs af alle endpoints
+- **Secrets:** `.env.example` + GitHub Secrets
 - **Secrets:** `.env.example` + GitHub Secrets
 
 ---

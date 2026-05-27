@@ -24,7 +24,7 @@ class SessionData(BaseModel):
     energy_delivered: Optional[float] = None
     duration_minutes: Optional[int] = None
     total_cost: Optional[float] = None
-    invoice_id: Optional[str] = None
+    invoice_line_id: Optional[str] = None
 
 
 class SessionStarted(BaseModel):
@@ -53,7 +53,7 @@ class SessionRated(BaseModel):
 
 class InvoiceLineGenerated(BaseModel):
     session_id: str
-    invoice_id: str
+    invoice_line_id: str
     amount: float
     currency: str = "DKK"
     timestamp: datetime

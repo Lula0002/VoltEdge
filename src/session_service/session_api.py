@@ -43,7 +43,7 @@ def _session_from_row(row) -> SessionData:
         energy_delivered=row["energy_delivered"],
         duration_minutes=row["duration_minutes"],
         total_cost=row["total_cost"],
-        invoice_id=row["invoice_id"],
+        invoice_line_id=row["invoice_line_id"],
     )
 
 
@@ -201,8 +201,8 @@ async def create_invoice(session_id: str):
 
     execute(
         conn,
-        "UPDATE sessions SET status = ?, invoice_id = ? WHERE session_id = ?",
-        (SessionStatus.INVOICED.value, invoice_data.invoice_id, session_id),
+        "UPDATE sessions SET status = ?, invoice_line_id = ? WHERE session_id = ?",
+        (SessionStatus.INVOICED.value, invoice_data.invoice_line_id, session_id),
     )
     conn.commit()
     conn.close()

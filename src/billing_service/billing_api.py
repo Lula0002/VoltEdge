@@ -1,4 +1,4 @@
-"""Billing — InvoiceLine entity (Aggregate 2 of the Charging Session Bounded Context, InvoiceID as root).
+"""Billing — InvoiceLine entity (Aggregate 2 of the Charging Session Bounded Context, InvoiceLineID as root).
 
 Handles tariff rating, price calculation, and invoice persistence.
 """
@@ -46,7 +46,7 @@ def calculate_price(energy_delivered: float, duration_minutes: int) -> tuple[flo
 
 
 class Invoice(BaseModel):
-    invoice_id: str
+    invoice_line_id: str
     session_id: str
     amount: float
     currency: str = "DKK"
@@ -70,22 +70,22 @@ async def rate_session(req: RateRequest):
 
 async def create_invoice(req: InvoiceRequest):
     """Generate and persist an invoice in SQLite database."""
-    invoice_id = str(uuid.uuid4())
+    invoice_line_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     now_str = now.isoformat()
     
     conn = get_connection()
     execute(
         conn,
-        "INSERT INTO invoices (invoice_id, session_id, amount, currency, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-        (invoice_id, req.session_id, req.total_cost, req.currency, "Generated", now_str),
+        "INSERT INTO invoices (invoice_line_id, session_id, amount, currency, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+        (invoice_line_id, req.session_id, req.total_cost, req.currency, "Generated", now_str),
     )
     conn.commit()
     conn.close()
     
     return InvoiceLineGenerated(
         session_id=req.session_id,
-        invoice_id=invoice_id,
+        invoice_line_id=invoice_line_id,
         amount=req.total_cost,
         currency=req.currency,
         timestamp=now,
@@ -104,7 +104,7 @@ async def list_invoices():
     result = []
     for row in rows:
         result.append({
-            "invoice_id": row["invoice_id"],
+            "invoice_line_id": row["invoice_line_id"],
             "session_id": row["session_id"],
             "amount": row["amount"],
             "currency": row["currency"],

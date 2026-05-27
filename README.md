@@ -48,7 +48,7 @@ All modules run in a **single Azure Web App** on one port — each with its own 
 > **DDD note — Bounded Context:**  
 > **Charging Session** is **one** Bounded Context owning **two aggregates**:  
 > - **Aggregate 1:** `Session` — entity with **SessionID** as root, manages the charging state machine (Created → Charging → Completed)  
-> - **Aggregate 2:** `InvoiceLine` — entity with **InvoiceID** as root, handles pricing and invoicing (Rated → Invoiced)  
+> - **Aggregate 2:** `InvoiceLine` — entity with **InvoiceLineID** as root, handles pricing and invoicing (Rated → Invoiced)  
 >  
 > **There is only 1 API in this solution** — between the Charging Session Bounded Context and Analytics/ML.  
 > Session and InvoiceLine communicate via direct Python imports (same Bounded Context).  
@@ -127,7 +127,7 @@ Swagger at: `http://localhost:8000/docs`
 
 #### `src/billing_service/billing_api.py` — Aggregate 2: InvoiceLine
 
-**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2: InvoiceLine entity with InvoiceID as root of the Charging Session Bounded Context).
+**Purpose:** Price calculation (rating) and invoice generation — persists invoices to SQLite (Aggregate 2: InvoiceLine entity with InvoiceLineID as root of the Charging Session Bounded Context).
 
 > ⚠️ `POST /billing/rate` and `POST /billing/invoice` are no longer exposed as API endpoints — they are called internally by the Session aggregate via `POST /sessions/{id}/rate` and `POST /sessions/{id}/invoice`.
 
@@ -410,7 +410,7 @@ cd src && uvicorn main:app --host 0.0.0.0 --port 8000
 │   │   ├── session_api.py            # FastAPI endpoints + state machine
 │   │   ├── .env.example
 │   │   └── __init__.py
-│   ├── billing_service/              # Aggregate 2: InvoiceLine (InvoiceID as root)
+│   ├── billing_service/              # Aggregate 2: InvoiceLine (InvoiceLineID as root)
 │   │   ├── billing_api.py            # Rating + invoice endpoints
 │   │   ├── tariff.py                 # Pricing rules (Value Object)
 │   │   ├── rating_service.py         # Domain service

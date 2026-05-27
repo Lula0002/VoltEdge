@@ -100,7 +100,7 @@ def init_db():
                 energy_delivered DOUBLE,
                 duration_minutes INT,
                 total_cost DOUBLE,
-                invoice_id VARCHAR(36)
+                invoice_line_id VARCHAR(36)
             )
         """)
     else:
@@ -115,7 +115,7 @@ def init_db():
                 energy_delivered  REAL,
                 duration_minutes  INTEGER,
                 total_cost       REAL,
-                invoice_id       TEXT
+                invoice_line_id       TEXT
             )
         """)
 
@@ -123,7 +123,7 @@ def init_db():
     if _is_mysql(conn):
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
-                invoice_id     VARCHAR(36)  PRIMARY KEY,
+                invoice_line_id     VARCHAR(36)  PRIMARY KEY,
                 session_id     VARCHAR(36)  NOT NULL,
                 amount         DOUBLE       NOT NULL,
                 currency       VARCHAR(10)  NOT NULL DEFAULT 'DKK',
@@ -134,7 +134,7 @@ def init_db():
     else:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
-                invoice_id       TEXT PRIMARY KEY,
+                invoice_line_id       TEXT PRIMARY KEY,
                 session_id       TEXT NOT NULL,
                 amount           REAL NOT NULL,
                 currency         TEXT NOT NULL DEFAULT 'DKK',

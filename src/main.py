@@ -57,7 +57,7 @@ class AutoFlowRequest(BaseModel):
     duration_minutes: int = Field(default=60)
 
 
-@app.post("/auto-flow-with-ml", tags=["auto-flow"])
+@app.post("/auto-flow-with-ml", tags=["Proof of API"])
 async def auto_flow_with_ml(req: AutoFlowRequest):
     """Run the Happy Path AND call Analytics/ML via HTTP — demonstrating separation.
 

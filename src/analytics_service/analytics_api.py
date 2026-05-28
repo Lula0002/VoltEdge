@@ -175,22 +175,23 @@ async def list_revenue_data(
     return result
 
 
-# ── 12-Month Revenue Forecast (Power BI) ─────────────────────
+# ── 52-Week Revenue Forecast (Power BI) ──────────────────────
 
-@router.get("/forecast-12-months", include_in_schema=False)
-async def forecast_12_months(
+@router.get("/forecast-52-weeks", include_in_schema=False)
+async def forecast_52_weeks(
+    customer: str = Query(default="Københavns Kommune", description="Customer name for the forecast"),
     num_chargers: int = Query(default=10, description="Number of chargers in operation", ge=1),
     avg_daily_sessions_per_charger: float = Query(default=2.0, description="Average sessions per charger per day", ge=0.1),
     avg_duration_minutes: int = Query(default=60, description="Average session duration in minutes", ge=1),
     parking_rate: float = Query(default=0.50, description="DKK per minute overstay parking fee"),
     free_parking_minutes: int = Query(default=10, description="Free parking minutes before tariff applies"),
     overstay_rate: float = Query(default=0.35, description="Fraction of sessions that incur overstay parking (0-1)"),
-    growth_rate_pct: float = Query(default=1.5, description="Monthly growth in session volume (%)"),
+    weekly_growth_rate_pct: float = Query(default=0.3, description="Weekly growth in session volume (%)"),
 ):
-    """Generate a 12-month revenue forecast for Power BI dashboards.
+    """Generate a 52-week revenue forecast for Power BI dashboards.
 
-    Uses the trained ML models to predict future revenue based on:
-      - Seasonal temperature patterns (affects dynamic price rate)
+    Uses the trained ML models to predict future revenue per week based on:
+      - Seasonal temperature patterns (sine wave — affects dynamic price rate)
       - Predicted energy consumption per session
       - Parking overstay tariff (DKK/min beyond free minutes)
 
@@ -198,28 +199,41 @@ async def forecast_12_months(
       1. **Charging revenue** — predicted_kWh × ML-predicted price rate
       2. **Parking revenue** — overstay_minutes × parking_rate × sessions with overstay
 
-    The forecast assumes Danish seasonal temperatures and afternoon-peak charging.
-    Returns a flat JSON array — one object per month — suitable for Power BI.
+    Each row includes a **confidence** score (0-1) based on the model's R²,
+    decreasing the further into the future the prediction goes.
+
+    Returns a flat JSON array — one object per week — suitable for Power BI.
     """
     import calendar
 
-    # Danish monthly average temperatures (°C)
-    MONTHLY_TEMPS = [0, 1, 5, 10, 15, 20, 22, 21, 16, 11, 5, 1]
+    # Model confidence: use R² from the energy model as base
+    model_state = get_model_state()
+    base_r2 = model_state["r2_score"] if model_state else 0.85
 
-    # Determine start month (next month from now)
+    # Seasonal temperature as a sine wave over 52 weeks
+    # Peak (amplitude) in summer ~week 26, trough in winter
+    ANNUAL_AVG_TEMP = 11
+    TEMP_AMPLITUDE = 11
+
     now = datetime.now(timezone.utc)
-    forecast = []
-    for i in range(12):
-        m = (now.month + i) % 12
-        year = now.year + (now.month + i) // 12
+    # Approximate current week of the year
+    start_week = now.isocalendar()[1]
 
-        temp = MONTHLY_TEMPS[m]
+    forecast = []
+    for week_offset in range(52):
+        week_num = start_week + week_offset
+        year = now.year + (week_num - 1) // 52
+        week_of_year = (week_num - 1) % 52 + 1
+
+        # Seasonal temperature (sine wave)
+        radians = 2 * math.pi * (week_offset - 26) / 52
+        temp = round(ANNUAL_AVG_TEMP + TEMP_AMPLITUDE * math.sin(radians), 1)
         hour = 14  # typical afternoon charging
 
-        # Growing session volume
-        growth = 1 + (growth_rate_pct / 100.0) * i
-        sessions_per_charger = avg_daily_sessions_per_charger * growth
-        total_sessions = round(sessions_per_charger * num_chargers * 30)
+        # Growing session volume week by week
+        growth = 1 + (weekly_growth_rate_pct / 100.0) * week_offset
+        weekly_sessions_per_charger = avg_daily_sessions_per_charger * 7 * growth
+        total_sessions = round(weekly_sessions_per_charger * num_chargers)
 
         # ML predictions
         predicted_kwh = predict_energy_kwh(avg_duration_minutes, temp, hour)
@@ -234,11 +248,22 @@ async def forecast_12_months(
         sessions_with_overstay = round(total_sessions * overstay_rate)
         parking_revenue = round(billable_parking * parking_rate * sessions_with_overstay, 2)
 
-        month_num = m + 1
+        # Confidence: base R² decreases slightly the further ahead we predict
+        # Also penalize extreme temperatures outside training range
+        temp_penalty = max(0, (abs(temp) - 30) / 20)  # 0 penalty for normal temps
+        horizon_penalty = week_offset / 52 * 0.08  # max 8% decay over the year
+        confidence = round(max(0.0, min(1.0, base_r2 - horizon_penalty - temp_penalty)), 3)
+
+        week_label = f"{year}-W{week_of_year:02d}"
+        month_num = (week_offset + now.month) % 12 + 1
+
         forecast.append({
-            "year_month": f"{year}-{month_num:02d}",
-            "month": calendar.month_abbr[month_num],
+            "customer": customer,
+            "week_label": week_label,
             "year": year,
+            "week_of_year": week_of_year,
+            "week_num": week_offset + 1,
+            "month": calendar.month_abbr[month_num],
             "month_num": month_num,
             "avg_temperature_celsius": temp,
             "total_sessions": total_sessions,
@@ -247,6 +272,7 @@ async def forecast_12_months(
             "charging_revenue_dkk": charging_revenue,
             "parking_revenue_dkk": parking_revenue,
             "total_revenue_dkk": round(charging_revenue + parking_revenue, 2),
+            "confidence": confidence,
         })
 
     return forecast

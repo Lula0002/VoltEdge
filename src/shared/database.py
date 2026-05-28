@@ -99,6 +99,7 @@ def init_db():
                 end_time       VARCHAR(50),
                 energy_delivered DOUBLE,
                 duration_minutes INT,
+                charging_duration_minutes INT,
                 total_cost DOUBLE,
                 invoice_line_id VARCHAR(36)
             )
@@ -114,6 +115,7 @@ def init_db():
                 end_time         TEXT,
                 energy_delivered  REAL,
                 duration_minutes  INTEGER,
+                charging_duration_minutes  INTEGER,
                 total_cost       REAL,
                 invoice_line_id       TEXT
             )

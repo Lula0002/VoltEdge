@@ -23,6 +23,7 @@ class SessionData(BaseModel):
     end_time: Optional[datetime] = None
     energy_delivered: Optional[float] = None
     duration_minutes: Optional[int] = None
+    charging_duration_minutes: Optional[int] = None
     total_cost: Optional[float] = None
     invoice_line_id: Optional[str] = None
 
@@ -40,20 +41,20 @@ class SessionValidated(BaseModel):
     contract_id: str
     energy_delivered: float
     duration_minutes: int
+    charging_duration_minutes: int
     timestamp: datetime
 
 
 class SessionRated(BaseModel):
     session_id: str
-    total_cost: float
-    currency: str = "DKK"
-    breakdown: dict = {}
+    invoice_line_id: str
     timestamp: datetime
 
 
 class InvoiceLineGenerated(BaseModel):
-    session_id: str
     invoice_line_id: str
+    session_id: str
     amount: float
     currency: str = "DKK"
+    breakdown: dict = {}
     timestamp: datetime

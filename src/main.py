@@ -54,7 +54,8 @@ class AutoFlowRequest(BaseModel):
     charger_id: str = Field(default="charger-1")
     contract_id: str = Field(default="contract-1")
     energy_delivered: float = Field(default=25.5)
-    duration_minutes: int = Field(default=60)
+    duration_minutes: int = Field(default=60, description="Total time at charger")
+    charging_duration_minutes: int = Field(default=45, description="Time actually charging (parking is free while charging)")
 
 
 @app.post("/auto-flow-with-ml", tags=["Proof of API"])
@@ -74,7 +75,7 @@ async def auto_flow_with_ml(req: AutoFlowRequest):
     from session_service.session_api import (
         start_session,
         start_charging,
-        complete_session,
+        validate_session,
         rate_session,
         create_invoice,
         StartSessionRequest,
@@ -87,11 +88,12 @@ async def auto_flow_with_ml(req: AutoFlowRequest):
     ))
     session_id = started.session_id
     charging = await start_charging(session_id)
-    validated = await complete_session(
+    validated = await validate_session(
         session_id,
         CompleteSessionRequest(
             energy_delivered=req.energy_delivered,
             duration_minutes=req.duration_minutes,
+            charging_duration_minutes=req.charging_duration_minutes,
         ),
     )
     rated = await rate_session(session_id)

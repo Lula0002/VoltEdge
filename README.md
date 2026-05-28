@@ -1,5 +1,11 @@
 # VoltEdge Mobility — MVP Solution
 
+[![Python](https://img.shields.io/badge/python-3.9+-blue?logo=python)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-00a393?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Azure](https://img.shields.io/badge/Azure-App%20Service-0078D4?logo=microsoftazure)](https://azure.microsoft.com)
+[![Build](https://img.shields.io/github/actions/workflow/status/Lula0002/VoltEdge/main_voltedge-app.yml?logo=githubactions&label=build%20%26%20test)](https://github.com/Lula0002/VoltEdge/actions)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A **Domain-Driven Design** proof-of-concept for EV charging session management — from plug-in to invoice — deployed on Azure with CI/CD.
 
 ---
@@ -10,6 +16,7 @@ A **Domain-Driven Design** proof-of-concept for EV charging session management �
 - [Happy Path](#happy-path)
 - [Pricing Model](#pricing-model)
 - [Quick Start](#quick-start)
+- [Testing](#testing)
 - [API Endpoints](#api-endpoints)
 - [Full Flow Example](#full-flow-example)
 - [Tech Stack](#tech-stack)
@@ -17,6 +24,7 @@ A **Domain-Driven Design** proof-of-concept for EV charging session management �
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Live Deployment](#live-deployment)
 - [Database](#database)
+- [Environment Variables](#environment-variables)
 - [Secrets Management](#secrets-management)
 - [License](#license)
 
@@ -104,6 +112,26 @@ uvicorn src.main:app --reload --port 8000
 Open [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI.
 
 > The SQLite database (`voltedge.db`) is created automatically in `src/` on app startup via `init_db()` — no manual setup needed. Delete the file to reset all data.
+
+---
+
+## Testing
+
+Run all unit and integration tests with a single command:
+
+```bash
+# From the repo root (after `pip install -r src/requirements.txt`)
+pip install pytest httpx
+python -m pytest tests -v --tb=short
+```
+
+| Test file | What it covers |
+|-----------|----------------|
+| `tests/test_billing_service.py` | Pure domain logic — Tariff, OverstayPolicy, RatingService (no HTTP, no DB) |
+| `tests/test_session_service.py` | Full API flow — session state machine via FastAPI TestClient |
+| `tests/test_analytics_service.py` | ML prediction endpoints — energy & revenue via HTTP |
+
+The CI/CD pipeline automatically runs these tests on every push to `main`.
 
 ---
 
@@ -309,6 +337,17 @@ The project uses **SQLite** — both locally and in production. No setup require
 
 - **sessions** — stores charging session data (state machine tracking, energy, duration, cost)
 - **invoices** — stores generated invoice lines (amount, currency, status)
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | *(none — uses SQLite)* | MySQL connection string: `mysql://user:password@host:3306/voltedge` |
+| `VOLTEDGE_DB_PATH` | `src/voltedge.db` | Custom path for the SQLite database file |
+
+Set these in a `.env` file or export them in your shell. Examples are in `src/*/.env.example`.
 
 ---
 

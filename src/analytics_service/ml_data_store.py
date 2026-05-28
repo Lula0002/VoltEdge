@@ -84,6 +84,15 @@ def init_db():
 
 # ── Training Data ──────────────────────────────────────────────
 
+def training_data_exists() -> bool:
+    """Return True if at least one training data row exists."""
+    init_db()
+    conn = _get_connection()
+    row = conn.execute("SELECT COUNT(*) AS cnt FROM training_data").fetchone()
+    conn.close()
+    return row["cnt"] > 0
+
+
 def add_training_data(
     duration_minutes: int,
     temperature: float,

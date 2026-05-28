@@ -1,14 +1,25 @@
 """ML Model — Linear Regression for energy & revenue prediction
 
 Isolated from the API layer so the ML code can be replaced or reused independently.
-Trained on bootstrapped data. Auto-retrains when new data is added via the API.
+On first startup the database is seeded with training data so the model never
+starts from zero. All training data lives in the ML database (ml_training.db).
 
-The model state (coefficients, R2) is persisted in the ML database so PowerBI
-can visualise the regression line.
+The model state (coefficients, R2) is persisted so PowerBI can visualise
+the regression line.
+
+To seed with your own historical data:
+  1. Place a CSV at  scripts/ml_seed_data.csv  (columns: duration_minutes,
+     temperature, hour_of_day, actual_energy_kwh), OR
+  2. Set the env var  VOLTEDGE_ML_SEED_CSV  to point to your CSV, OR
+  3. Run  python scripts/import_ml_data.py path/to/your_data.csv
+     (this can be done anytime, even after the app has started)
 """
 
 from __future__ import annotations
 
+import csv
+import os
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -19,71 +30,95 @@ from analytics_service.ml_data_store import (
     save_model_state,
     get_all_training_data,
     add_training_data,
+    training_data_exists,
 )
 
 
-# ── Bootstrapped training data ─────────────────────────────────
+# ── Fallback seed data (used if no CSV is provided) ────────────
 # Features: [duration_minutes, temperature, hour_of_day]
-# These seed the model so it can make predictions immediately.
 
-BOOTSTRAP_FEATURES = np.array([
-    [10,  20, 10],   # 10 min, 20°C, at 10:00
-    [20,  18, 14],   # 20 min, 18°C, at 14:00
-    [30,  15,  8],   # 30 min, 15°C, at 08:00
-    [45,  22, 12],   # 45 min, 22°C, at 12:00
-    [60,  20, 14],   # 60 min, 20°C, at 14:00
-    [60,   5, 18],   # 60 min,  5°C, at 18:00 (cold = more energy)
-    [60,  30,  9],   # 60 min, 30°C, at 09:00 (hot = less energy)
-    [90,  20, 16],   # 90 min, 20°C, at 16:00
-    [120, 10, 20],   # 120 min, 10°C, at 20:00
-    [180, 25, 11],   # 180 min, 25°C, at 11:00
-    [240,  0,  7],   # 240 min,  0°C, at 07:00 (very cold)
-    [300, 15, 22],   # 300 min, 15°C, at 22:00
-])
-
-BOOTSTRAP_ENERGY = np.array([
-    2.0,   # 10 min
-    4.5,   # 20 min
-    7.5,   # 30 min
-    11.5,  # 45 min
-    15.0,  # 60 min, 20°C
-    17.5,  # 60 min, cold (more consumption)
-    13.0,  # 60 min, hot (less consumption)
-    22.5,  # 90 min
-    31.0,  # 120 min
-    46.0,  # 180 min
-    65.0,  # 240 min, cold
-    76.0,  # 300 min
-])
+FALLBACK_SEED = [
+    (10,  20, 10,  2.0),   # 10 min, 20°C, at 10:00
+    (20,  18, 14,  4.5),   # 20 min, 18°C, at 14:00
+    (30,  15,  8,  7.5),   # 30 min, 15°C, at 08:00
+    (45,  22, 12, 11.5),   # 45 min, 22°C, at 12:00
+    (60,  20, 14, 15.0),   # 60 min, 20°C, at 14:00
+    (60,   5, 18, 17.5),   # 60 min,  5°C, at 18:00 (cold = more energy)
+    (60,  30,  9, 13.0),   # 60 min, 30°C, at 09:00 (hot = less energy)
+    (90,  20, 16, 22.5),   # 90 min, 20°C, at 16:00
+    (120, 10, 20, 31.0),   # 120 min, 10°C, at 20:00
+    (180, 25, 11, 46.0),   # 180 min, 25°C, at 11:00
+    (240,  0,  7, 65.0),   # 240 min,  0°C, at 07:00 (very cold)
+    (300, 15, 22, 76.0),   # 300 min, 15°C, at 22:00
+]
 
 _model = LinearRegression()
 _model_version = "v0.0.0"
 
 
+def _seed_db_if_empty():
+    """On first startup, populate the database with training data.
+
+    Priority:
+      1. CSV from VOLTEDGE_ML_SEED_CSV env var
+      2. CSV at  scripts/ml_seed_data.csv  (relative to project root)
+      3. Hardcoded FALLBACK_SEED list above
+
+    This ensures the model NEVER starts from zero.
+    """
+    if training_data_exists():
+        return
+
+    csv_path = os.getenv("VOLTEDGE_ML_SEED_CSV")
+    if csv_path and Path(csv_path).exists():
+        _seed_from_csv(csv_path)
+        return
+
+    # Default path relative to project root (parents up to repo root)
+    default_csv = Path(__file__).parent.parent.parent / "scripts" / "ml_seed_data.csv"
+    if default_csv.exists():
+        _seed_from_csv(str(default_csv))
+        return
+
+    # Fallback to hardcoded data
+    for dur, temp, hour, energy in FALLBACK_SEED:
+        add_training_data(dur, temp, hour, energy)
+
+
+def _seed_from_csv(filepath: str):
+    """Read a CSV and insert every row as training data."""
+    with open(filepath, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            add_training_data(
+                duration_minutes=int(row["duration_minutes"]),
+                temperature=float(row["temperature"]),
+                hour_of_day=int(row["hour_of_day"]),
+                actual_energy_kwh=float(row["actual_energy_kwh"]),
+            )
+
+
 def _load_data() -> tuple[np.ndarray, np.ndarray]:
-    """Load all training data (bootstrap + user-added) from the database.
+    """Load all training data from the database.
 
     Returns (features_matrix, energy_array).
     """
     stored = get_all_training_data()
-
-    if not stored:
-        return BOOTSTRAP_FEATURES.copy(), BOOTSTRAP_ENERGY.copy()
-
-    user_features = np.array([
+    features = np.array([
         [r["duration_minutes"], r["temperature"], r["hour_of_day"]]
         for r in stored
     ])
-    user_energy = np.array([r["actual_energy_kwh"] for r in stored])
-
-    features = np.vstack([BOOTSTRAP_FEATURES, user_features])
-    energy = np.concatenate([BOOTSTRAP_ENERGY, user_energy])
+    energy = np.array([r["actual_energy_kwh"] for r in stored])
     return features, energy
 
 
 def _train():
     """Train (or retrain) the model on all available data."""
     global _model, _model_version
+
+    # Seed the DB on very first startup so we never start from zero
+    _seed_db_if_empty()
+
     X, y = _load_data()
     _model.fit(X, y)
 

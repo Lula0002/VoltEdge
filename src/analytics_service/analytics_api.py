@@ -26,12 +26,6 @@ router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
 
 # ── Request/Response Models ──────────────────────────────────
 
-class PredictEnergyRequest(BaseModel):
-    duration_minutes: int = Field(default=60, description="Expected charging time in minutes", examples=[60])
-    temperature: float = Field(default=15, description="Expected temperature in °C", examples=[15])
-    hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
-
-
 class PredictPriceRateRequest(BaseModel):
     temperature: float = Field(default=15, description="Expected temperature in °C", examples=[15])
     hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
@@ -47,35 +41,6 @@ class RevenueRequest(BaseModel):
 
 
 # ── Shared logic ──────────────────────────────────────────────
-
-def _build_energy_response(duration_minutes: int, temperature: float, hour_of_day: int):
-    """Run prediction, persist it, and build the response dict."""
-    model_info = get_model_info()
-    predicted_kwh = round(predict_energy_kwh(duration_minutes, temperature, hour_of_day), 2)
-
-    # Save every prediction to the database
-    add_prediction(
-        duration_minutes=duration_minutes,
-        temperature=temperature,
-        hour_of_day=hour_of_day,
-        predicted_kwh=predicted_kwh,
-        model_version=model_info["model_version"],
-    )
-
-    return {
-        "input": {
-            "duration_minutes": duration_minutes,
-            "temperature_celsius": temperature,
-            "hour_of_day": hour_of_day,
-        },
-        "predicted_energy_kwh": predicted_kwh,
-        "model": {
-            "type": "LinearRegression",
-            "version": model_info["model_version"],
-            "training_count": model_info["training_count"],
-        },
-    }
-
 
 def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_day: int,
                             kwh_price: float, num_sessions: int, num_chargers: int):
@@ -147,7 +112,7 @@ async def list_training_data():
     }
 
 
-@router.get("/training-data/rows")
+@router.get("/training-data/rows", include_in_schema=False)
 async def list_training_data_rows():
     """Return ONLY the training data rows as a flat JSON array.
 
@@ -162,12 +127,16 @@ async def list_training_data_rows():
 
 @router.get("/revenue-data")
 async def list_revenue_data(
-    kwh_price: float = Query(default=2.45, description="KWh price in DKK", gt=0),
+    kwh_price: float = Query(default=2.45, description="KWh price in DKK for flat-rate scenario", gt=0),
 ):
-    """Return training data with revenue calculated for a given kWh price.
+    """Return training data with revenue calculated for both flat-rate and dynamic pricing.
 
-    PowerBI can call this with different kWh prices to see revenue scenarios.
-    Revenue = actual_energy_kwh × kwh_price.
+    PowerBI can compare two scenarios:
+      - Flat-rate revenue:  actual_energy_kwh × kwh_price
+      - Dynamic revenue:     actual_energy_kwh × ML-predicted price rate (varies by weather)
+
+    The dynamic price rate is predicted by the ML price-rate model based on each
+    training row's temperature and hour_of_day.
 
     Example:
       GET /analytics/revenue-data?kwh_price=3.50
@@ -175,30 +144,21 @@ async def list_revenue_data(
     data = get_all_training_data()
     result = []
     for row in data:
+        dynamic_rate = predict_price_rate(row["temperature"], row["hour_of_day"])
         result.append({
             "duration_minutes": row["duration_minutes"],
             "temperature": row["temperature"],
             "hour_of_day": row["hour_of_day"],
             "actual_energy_kwh": row["actual_energy_kwh"],
-            "kwh_price": kwh_price,
-            "revenue_dkk": round(row["actual_energy_kwh"] * kwh_price, 2),
+            "flat_kwh_price": kwh_price,
+            "flat_revenue_dkk": round(row["actual_energy_kwh"] * kwh_price, 2),
+            "dynamic_price_dkk_per_kwh": dynamic_rate,
+            "dynamic_revenue_dkk": round(row["actual_energy_kwh"] * dynamic_rate, 2),
         })
     return result
 
 
 # ── POST Endpoints ───────────────────────────────────────────
-
-@router.post("/predict-energy")
-async def predict_energy(req: PredictEnergyRequest):
-    """Predict future energy consumption (kWh) based on duration, weather and time of day.
-
-    ML model: Linear regression trained on bootstrapped + accumulated real data.
-    Features: duration (min), temperature (°C), hour of day.
-
-    Every prediction is saved to the database so PowerBI can track accuracy over time.
-    """
-    return _build_energy_response(req.duration_minutes, req.temperature, req.hour_of_day)
-
 
 @router.post("/predict-revenue")
 async def predict_revenue(req: RevenueRequest):
@@ -218,22 +178,6 @@ async def predict_revenue(req: RevenueRequest):
 
 
 # ── GET Endpoints (query params for easy browser/PowerBI use) ─
-
-@router.get("/predict-energy")
-async def predict_energy_get(
-    duration_minutes: int = Query(default=60, description="Expected charging time in minutes", ge=1),
-    temperature: float = Query(default=15, description="Expected temperature in °C"),
-    hour_of_day: int = Query(default=14, description="Time of day (0-23)", ge=0, le=23),
-):
-    """Predict future energy consumption (kWh) — GET version with query parameters.
-
-    Same as POST /predict-energy but accepts query params instead of a request body.
-    Useful for quick testing in a browser or Power BI Web connector.
-
-    Every prediction is saved to the database so PowerBI can track accuracy over time.
-    """
-    return _build_energy_response(duration_minutes, temperature, hour_of_day)
-
 
 @router.get("/predict-revenue")
 async def predict_revenue_get(

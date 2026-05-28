@@ -114,9 +114,8 @@ async def auto_flow_with_ml(req: AutoFlowRequest):
     try:
         async with httpx.AsyncClient() as client:
             ml_response = await client.post(
-                f"{base_url}/analytics/predict-energy",
+                f"{base_url}/analytics/predict-price-rate",
                 json={
-                    "duration_minutes": req.duration_minutes,
                     "temperature": 15,
                     "hour_of_day": 14,
                 },
@@ -129,7 +128,7 @@ async def auto_flow_with_ml(req: AutoFlowRequest):
     return {
         "core": core_result,
         "analytics_ml_external_api_call": {
-            "endpoint": "POST /analytics/predict-energy (via HTTP)",
+            "endpoint": "POST /analytics/predict-price-rate (via HTTP)",
             "note": "Analytics/ML is an EXTERNAL capability — called via HTTP, not direct import",
             "result": ml_result,
         },

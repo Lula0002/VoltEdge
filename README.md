@@ -161,7 +161,7 @@ Full documentation with request/response schemas at [http://localhost:8000/docs]
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/analytics/predict-energy` | Predict kWh consumption via ML |
+| POST | `/analytics/predict-price-rate` | Predict DKK/kWh price rate (varies with weather) |
 | POST | `/analytics/predict-revenue` | Predict revenue via ML |
 
 ### Demo endpoint

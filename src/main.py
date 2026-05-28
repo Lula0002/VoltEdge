@@ -93,8 +93,8 @@ async def auto_flow_with_ml(req: AutoFlowRequest):
             energy_delivered=req.energy_delivered,
             duration_minutes=req.duration_minutes,
             charging_duration_minutes=req.charging_duration_minutes,
-            temperature=15,      # 15°C — en almindelig dag i København
-            hour_of_day=14,      # Kl. 14 — eftermiddag, normal takst
+            temperature=15,      # 15°C — A normal day in Copenhagen
+            hour_of_day=14,      # Kl. 14 — afternoon, normal rate
         ),
     )
     rated = await rate_session(session_id)

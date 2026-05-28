@@ -242,15 +242,4 @@ async def list_sessions():
     return [_session_from_row(r) for r in rows]
 
 
-@router.get("/{session_id}")
-async def get_session(session_id: str):
-    conn = get_connection()
-    cursor = execute(conn, "SELECT * FROM sessions WHERE session_id = ?", (session_id,))
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
 
-    if not row:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    return _session_from_row(row)

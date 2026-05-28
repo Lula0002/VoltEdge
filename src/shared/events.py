@@ -26,6 +26,8 @@ class SessionData(BaseModel):
     charging_duration_minutes: Optional[int] = None
     total_cost: Optional[float] = None
     invoice_line_id: Optional[str] = None
+    temperature: Optional[float] = None
+    hour_of_day: Optional[int] = None
 
 
 class SessionStarted(BaseModel):
@@ -42,6 +44,8 @@ class SessionValidated(BaseModel):
     energy_delivered: float
     duration_minutes: int
     charging_duration_minutes: int
+    temperature: Optional[float] = None
+    hour_of_day: Optional[int] = None
     timestamp: datetime
 
 

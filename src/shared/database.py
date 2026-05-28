@@ -145,6 +145,21 @@ def init_db():
             )
         """)
 
+    # ── Add temperature + hour_of_day columns (if not already present) ──
+    # Supports ML dynamic pricing: weather at charging time determines kWh price
+    if _is_mysql(conn):
+        for col, dtype in [("temperature", "DOUBLE"), ("hour_of_day", "INT")]:
+            try:
+                cursor.execute(f"ALTER TABLE sessions ADD COLUMN {col} {dtype}")
+            except Exception:
+                pass  # Column already exists
+    else:
+        for col, dtype in [("temperature", "REAL"), ("hour_of_day", "INTEGER")]:
+            try:
+                cursor.execute(f"ALTER TABLE sessions ADD COLUMN {col} {dtype}")
+            except Exception:
+                pass  # Column already exists
+
     conn.commit()
     cursor.close()
     conn.close()

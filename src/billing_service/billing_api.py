@@ -5,6 +5,7 @@ Handles tariff rating, price calculation, and invoice persistence.
 
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -38,17 +39,36 @@ class InvoiceRequest(BaseModel):
 
 
 # Re-export for backward compatibility with session_service
-def calculate_price(energy_delivered: float, duration_minutes: int, charging_minutes: int = 0) -> tuple[float, float, float, dict]:
+def calculate_price(
+    energy_delivered: float,
+    duration_minutes: int,
+    charging_minutes: int = 0,
+    temperature: Optional[float] = None,
+    hour_of_day: Optional[int] = None,
+) -> tuple[float, float, float, dict]:
     """Pure calculation — delegates to RatingService (UL domain service).
+
+    ML dynamic pricing: if temperature + hour_of_day are provided, the kWh price
+    is predicted by the ML price-rate model (varies with weather and time of day).
+    If omitted, falls back to the default 2.45 DKK/kWh rate.
 
     Args:
         energy_delivered: kWh delivered
         duration_minutes: total time at charger
         charging_minutes: time the car was actually charging (parking is free while charging)
+        temperature: temperature in °C at charging time (for ML dynamic pricing)
+        hour_of_day: hour of day 0-23 at charging time (for ML dynamic pricing)
 
     Returns (total_cost, energy_cost, parking_cost, breakdown).
     """
-    return default_rating_service.rate(energy_delivered, duration_minutes, charging_minutes)
+    if temperature is not None and hour_of_day is not None:
+        from analytics_service.ml_model import predict_price_rate
+        energy_rate = predict_price_rate(temperature, hour_of_day)
+        tariff = Tariff(energy_rate=energy_rate)
+        rating_service = RatingService(tariff)
+    else:
+        rating_service = default_rating_service
+    return rating_service.rate(energy_delivered, duration_minutes, charging_minutes)
 
 
 class Invoice(BaseModel):

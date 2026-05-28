@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from shared.events import (
     SessionData,
@@ -31,6 +32,8 @@ class CompleteSessionRequest(BaseModel):
     energy_delivered: float = Field(examples=[25.5])
     duration_minutes: int = Field(examples=[60], description="Total time at charger (charging + parking)")
     charging_duration_minutes: int = Field(examples=[45], description="Time the car was actually charging")
+    temperature: Optional[float] = Field(default=None, description="Temperature in °C at charging time — used for ML dynamic pricing")
+    hour_of_day: Optional[int] = Field(default=None, description="Hour of day (0-23) at charging time — used for ML dynamic pricing")
 
 
 def _session_from_row(row) -> SessionData:
@@ -46,6 +49,8 @@ def _session_from_row(row) -> SessionData:
         charging_duration_minutes=row["charging_duration_minutes"],
         total_cost=row["total_cost"],
         invoice_line_id=row["invoice_line_id"],
+        temperature=row["temperature"] if "temperature" in row.keys() else None,
+        hour_of_day=row["hour_of_day"] if "hour_of_day" in row.keys() else None,
     )
 
 
@@ -123,8 +128,8 @@ async def _complete_session(session_id: str, req: CompleteSessionRequest):
 
     execute(
         conn,
-        "UPDATE sessions SET status = ?, end_time = ?, energy_delivered = ?, duration_minutes = ?, charging_duration_minutes = ? WHERE session_id = ?",
-        (SessionStatus.COMPLETED.value, now_str, req.energy_delivered, req.duration_minutes, req.charging_duration_minutes, session_id),
+        "UPDATE sessions SET status = ?, end_time = ?, energy_delivered = ?, duration_minutes = ?, charging_duration_minutes = ?, temperature = ?, hour_of_day = ? WHERE session_id = ?",
+        (SessionStatus.COMPLETED.value, now_str, req.energy_delivered, req.duration_minutes, req.charging_duration_minutes, req.temperature, req.hour_of_day, session_id),
     )
     conn.commit()
     conn.close()
@@ -136,6 +141,8 @@ async def _complete_session(session_id: str, req: CompleteSessionRequest):
         energy_delivered=req.energy_delivered,
         duration_minutes=req.duration_minutes,
         charging_duration_minutes=req.charging_duration_minutes,
+        temperature=req.temperature,
+        hour_of_day=req.hour_of_day,
         timestamp=now,
     )
 
@@ -196,10 +203,14 @@ async def create_invoice(session_id: str):
         raise HTTPException(status_code=400, detail="Session has no invoice_line_id — must be rated first")
 
     # Calculate price using Tariff/RatingService from Billing Context
+    # ML dynamic pricing: if temperature + hour_of_day were recorded at validation,
+    # the billing service uses the ML price-rate model to determine the kWh price
     total_cost, _, _, breakdown = calculate_price(
         session.energy_delivered,
         session.duration_minutes,
         session.charging_duration_minutes,
+        temperature=session.temperature,
+        hour_of_day=session.hour_of_day,
     )
 
     now = datetime.now(timezone.utc)

@@ -20,15 +20,23 @@ Architecture:
   └─────────────────────────────────────┘
 """
 
+import json
+import logging
 import sys
+import time
+import uuid
 from pathlib import Path
 
 # Ensure src/ is on sys.path so all service packages are importable
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# ── Structured JSON logging ──
+logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[logging.StreamHandler()])
+logger = logging.getLogger("voltedge")
 
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
@@ -145,6 +153,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Structured JSON logging middleware with correlation ID ──
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    correlation_id = str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    start = time.time()
+
+    response = await call_next(request)
+
+    duration_ms = round((time.time() - start) * 1000, 2)
+    log_entry = json.dumps({
+        "correlation_id": correlation_id,
+        "method": request.method,
+        "path": request.url.path,
+        "status": response.status_code,
+        "duration_ms": duration_ms,
+    })
+    logger.info(log_entry)
+
+    return response
 
 
 # Import and register all 3 service routers

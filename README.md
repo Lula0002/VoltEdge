@@ -109,7 +109,7 @@ pip install -r src/requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 
-Open [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI.
+Open [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs) for Swagger UI.
 
 > The SQLite database (`voltedge.db`) is created automatically in `src/` on app startup via `init_db()` — no manual setup needed. Delete the file to reset all data.
 
@@ -137,7 +137,7 @@ The CI/CD pipeline automatically runs these tests on every push to `main`.
 
 ## API Endpoints
 
-Full documentation with request/response schemas at [http://localhost:8000/docs](http://localhost:8000/docs).
+Full documentation with request/response schemas at [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs).
 
 ### Session endpoints
 
@@ -178,30 +178,30 @@ Full documentation with request/response schemas at [http://localhost:8000/docs]
 
 ```bash
 # Step 1: Start a session
-SID=$(curl -s -X POST http://localhost:8000/sessions/start \
+SID=$(curl -s -X POST https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/sessions/start \
   -H "Content-Type: application/json" \
   -d '{"charger_id":"charger-1","contract_id":"contract-1"}' \
   | python3 -c "import json,sys;print(json.load(sys.stdin)['session_id'])")
 
 # Step 2: Start charging
-curl -s -X POST "http://localhost:8000/sessions/$SID/start-charging"
+curl -s -X POST "https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/sessions/$SID/start-charging"
 
 # Step 3: Validate (submit meter data)
-curl -s -X POST "http://localhost:8000/sessions/$SID/validate" \
+curl -s -X POST "https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/sessions/$SID/validate" \
   -H "Content-Type: application/json" \
   -d '{"energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}'
 
 # Step 4: Rate (assign invoice line ID — no price calculation)
-curl -s -X POST "http://localhost:8000/sessions/$SID/rate"
+curl -s -X POST "https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/sessions/$SID/rate"
 
 # Step 5: Invoice (calculate price + persist)
-curl -s -X POST "http://localhost:8000/sessions/$SID/invoice" | python3 -m json.tool
+curl -s -X POST "https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/sessions/$SID/invoice" | python3 -m json.tool
 ```
 
 ### One-call demo
 
 ```bash
-curl -s -X POST http://localhost:8000/auto-flow-with-ml \
+curl -s -X POST https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/auto-flow-with-ml \
   -H "Content-Type: application/json" \
   -d '{"charger_id":"charger-1","contract_id":"contract-1","energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}' | python3 -m json.tool
 ```

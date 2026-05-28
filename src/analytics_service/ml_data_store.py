@@ -162,6 +162,19 @@ def record_actual(prediction_id: int, actual_kwh: float) -> bool:
     return updated
 
 
+def get_prediction_by_id(prediction_id: int) -> Optional[dict]:
+    """Return a single prediction by id, or None if not found."""
+    init_db()
+    conn = _get_connection()
+    row = conn.execute(
+        "SELECT id, duration_minutes, temperature, hour_of_day, predicted_kwh, actual_kwh, model_version, created_at "
+        "FROM predictions WHERE id = ?",
+        (prediction_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def get_all_predictions() -> list[dict]:
     """Return all predictions ordered by creation time."""
     init_db()

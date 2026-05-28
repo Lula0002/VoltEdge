@@ -6,17 +6,20 @@ can track accuracy over time.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from analytics_service.ml_model import (
     predict_energy_kwh,
     get_model_info,
+    add_actual_and_retrain,
 )
 from analytics_service.ml_data_store import (
     get_all_training_data,
     add_prediction,
     get_all_predictions,
+    get_prediction_by_id,
+    record_actual,
 )
 
 router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
@@ -28,6 +31,10 @@ class PredictEnergyRequest(BaseModel):
     duration_minutes: int = Field(default=60, description="Expected charging time in minutes", examples=[60])
     temperature: float = Field(default=15, description="Expected temperature in °C", examples=[15])
     hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
+
+
+class RecordActualRequest(BaseModel):
+    actual_energy_kwh: float = Field(description="The actual energy consumed in kWh", gt=0)
 
 
 class RevenueRequest(BaseModel):
@@ -205,3 +212,46 @@ async def predict_revenue_get(
         duration_minutes, temperature, hour_of_day,
         kwh_price, num_sessions, num_chargers,
     )
+
+
+# ── Record Actual (for model improvement) ────────────────────
+
+@router.post("/predictions/{prediction_id}/actual")
+async def record_actual_endpoint(prediction_id: int, req: RecordActualRequest):
+    """Record the actual energy consumed for a previous prediction.
+
+    When you know the real result, call this so the model can:
+      1. Track its accuracy (predicted vs actual)
+      2. Retrain with the new data point (improving future predictions)
+
+    PowerBI can then visualise predicted vs actual to show accuracy over time.
+    """
+    # Find the original prediction
+    pred = get_prediction_by_id(prediction_id)
+    if pred is None:
+        raise HTTPException(status_code=404, detail=f"Prediction {prediction_id} not found")
+
+    if pred["actual_kwh"] is not None:
+        raise HTTPException(status_code=400, detail=f"Prediction {prediction_id} already has actual_kwh = {pred['actual_kwh']}")
+
+    # Update the predictions table
+    updated = record_actual(prediction_id, req.actual_energy_kwh)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Failed to update prediction {prediction_id}")
+
+    # Add to training data and retrain the model
+    retrain_info = add_actual_and_retrain(
+        duration_minutes=pred["duration_minutes"],
+        temperature=pred["temperature"],
+        hour_of_day=pred["hour_of_day"],
+        actual_energy_kwh=req.actual_energy_kwh,
+    )
+
+    return {
+        "message": "Actual energy recorded and model retrained",
+        "prediction_id": prediction_id,
+        "predicted_kwh": pred["predicted_kwh"],
+        "actual_energy_kwh": req.actual_energy_kwh,
+        "error_kwh": round(pred["predicted_kwh"] - req.actual_energy_kwh, 2),
+        "retrained_model": retrain_info,
+    }

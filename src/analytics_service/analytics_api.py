@@ -1,7 +1,7 @@
 """Analytics Service — API endpoints for ML predictions and data access
 
-ML model is isolated in ml_model.py, so the API layer only handles
-request/response and calls to the model.
+Every prediction call saves input + result to the ML database so PowerBI
+can track accuracy over time.
 """
 
 from __future__ import annotations
@@ -13,7 +13,11 @@ from analytics_service.ml_model import (
     predict_energy_kwh,
     get_model_info,
 )
-from analytics_service.ml_data_store import get_all_training_data
+from analytics_service.ml_data_store import (
+    get_all_training_data,
+    add_prediction,
+    get_all_predictions,
+)
 
 router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
 
@@ -38,16 +42,26 @@ class RevenueRequest(BaseModel):
 # ── Shared logic ──────────────────────────────────────────────
 
 def _build_energy_response(duration_minutes: int, temperature: float, hour_of_day: int):
-    """Run prediction and build the response dict."""
+    """Run prediction, persist it, and build the response dict."""
     model_info = get_model_info()
-    predicted_kwh = predict_energy_kwh(duration_minutes, temperature, hour_of_day)
+    predicted_kwh = round(predict_energy_kwh(duration_minutes, temperature, hour_of_day), 2)
+
+    # Save every prediction to the database
+    add_prediction(
+        duration_minutes=duration_minutes,
+        temperature=temperature,
+        hour_of_day=hour_of_day,
+        predicted_kwh=predicted_kwh,
+        model_version=model_info["model_version"],
+    )
+
     return {
         "input": {
             "duration_minutes": duration_minutes,
             "temperature_celsius": temperature,
             "hour_of_day": hour_of_day,
         },
-        "predicted_energy_kwh": round(predicted_kwh, 2),
+        "predicted_energy_kwh": predicted_kwh,
         "model": {
             "type": "LinearRegression",
             "version": model_info["model_version"],
@@ -58,9 +72,18 @@ def _build_energy_response(duration_minutes: int, temperature: float, hour_of_da
 
 def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_day: int,
                             kwh_price: float, num_sessions: int, num_chargers: int):
-    """Run revenue prediction and build the response dict."""
+    """Run revenue prediction, persist the energy prediction, and build response."""
     model_info = get_model_info()
-    predicted_kwh_per_session = predict_energy_kwh(duration_minutes, temperature, hour_of_day)
+    predicted_kwh_per_session = round(predict_energy_kwh(duration_minutes, temperature, hour_of_day), 2)
+
+    # Save the underlying energy prediction to the database
+    add_prediction(
+        duration_minutes=duration_minutes,
+        temperature=temperature,
+        hour_of_day=hour_of_day,
+        predicted_kwh=predicted_kwh_per_session,
+        model_version=model_info["model_version"],
+    )
 
     total_kwh = predicted_kwh_per_session * num_sessions
     total_cost_dkk = round(total_kwh * kwh_price, 2)
@@ -75,7 +98,7 @@ def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_d
             "num_chargers": num_chargers,
         },
         "prediction": {
-            "predicted_kwh_per_session": round(predicted_kwh_per_session, 2),
+            "predicted_kwh_per_session": predicted_kwh_per_session,
             "total_predicted_kwh": round(total_kwh, 2),
             "total_predicted_cost_dkk": total_cost_dkk,
             "revenue_per_charger_dkk": revenue_per_charger,
@@ -89,19 +112,27 @@ def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_d
     }
 
 
-# ── Training Data (read-only, for verifying seed data) ───────
+# ── Training Data (read-only, for PowerBI) ───────────────────
 
 @router.get("/training-data")
 async def list_training_data():
-    """Return all training data in the ML database.
+    """Return ALL data from the ML database — both training data and predictions.
 
-    Use this to verify that seed data was loaded correctly.
     PowerBI can consume this endpoint via Power Query (Web connector).
+
+    Returns:
+      - training_data: rows used to train the model (actual consumption)
+      - predictions:   every prediction made (for accuracy tracking)
     """
-    data = get_all_training_data()
     return {
-        "count": len(data),
-        "data": data,
+        "training_data": {
+            "count": len(get_all_training_data()),
+            "rows": get_all_training_data(),
+        },
+        "predictions": {
+            "count": len(get_all_predictions()),
+            "rows": get_all_predictions(),
+        },
     }
 
 
@@ -113,6 +144,8 @@ async def predict_energy(req: PredictEnergyRequest):
 
     ML model: Linear regression trained on bootstrapped + accumulated real data.
     Features: duration (min), temperature (°C), hour of day.
+
+    Every prediction is saved to the database so PowerBI can track accuracy over time.
     """
     return _build_energy_response(req.duration_minutes, req.temperature, req.hour_of_day)
 
@@ -125,6 +158,8 @@ async def predict_revenue(req: RevenueRequest):
     Then calculates:
       - Expected costs (kWh x kWh price)
       - Expected revenue across all chargers and sessions
+
+    Every prediction is saved to the database so PowerBI can track accuracy over time.
     """
     return _build_revenue_response(
         req.duration_minutes, req.temperature, req.hour_of_day,
@@ -144,6 +179,8 @@ async def predict_energy_get(
 
     Same as POST /predict-energy but accepts query params instead of a request body.
     Useful for quick testing in a browser or Power BI Web connector.
+
+    Every prediction is saved to the database so PowerBI can track accuracy over time.
     """
     return _build_energy_response(duration_minutes, temperature, hour_of_day)
 
@@ -161,6 +198,8 @@ async def predict_revenue_get(
 
     Same as POST /predict-revenue but accepts query params instead of a request body.
     Useful for quick testing in a browser or Power BI Web connector.
+
+    Every prediction is saved to the database so PowerBI can track accuracy over time.
     """
     return _build_revenue_response(
         duration_minutes, temperature, hour_of_day,

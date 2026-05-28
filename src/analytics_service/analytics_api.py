@@ -141,6 +141,19 @@ async def list_training_data():
     }
 
 
+@router.get("/training-data/rows")
+async def list_training_data_rows():
+    """Return ONLY the training data rows as a flat JSON array.
+
+    PowerBI-friendly format: no nesting, just an array of objects.
+    Each object has: duration_minutes, temperature, hour_of_day, actual_energy_kwh, created_at.
+
+    Use THIS endpoint in PowerBI instead of /training-data if you
+    have trouble parsing nested JSON.
+    """
+    return get_all_training_data()
+
+
 # ── POST Endpoints ───────────────────────────────────────────
 
 @router.post("/predict-energy")

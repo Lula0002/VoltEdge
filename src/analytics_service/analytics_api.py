@@ -154,6 +154,32 @@ async def list_training_data_rows():
     return get_all_training_data()
 
 
+@router.get("/revenue-data")
+async def list_revenue_data(
+    kwh_price: float = Query(default=2.45, description="KWh price in DKK", gt=0),
+):
+    """Return training data with revenue calculated for a given kWh price.
+
+    PowerBI can call this with different kWh prices to see revenue scenarios.
+    Revenue = actual_energy_kwh × kwh_price.
+
+    Example:
+      GET /analytics/revenue-data?kwh_price=3.50
+    """
+    data = get_all_training_data()
+    result = []
+    for row in data:
+        result.append({
+            "duration_minutes": row["duration_minutes"],
+            "temperature": row["temperature"],
+            "hour_of_day": row["hour_of_day"],
+            "actual_energy_kwh": row["actual_energy_kwh"],
+            "kwh_price": kwh_price,
+            "revenue_dkk": round(row["actual_energy_kwh"] * kwh_price, 2),
+        })
+    return result
+
+
 # ── POST Endpoints ───────────────────────────────────────────
 
 @router.post("/predict-energy")

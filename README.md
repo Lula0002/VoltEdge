@@ -38,7 +38,7 @@ All modules run in a **single Azure Web App** on one port, each with its own URL
 |--------|----------------|------------|----------------|
 | **Session** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed → Rated → Invoiced |
 | **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tariff calculation + invoice generation |
-| **Analytics/ML** | External capability | `/analytics/*` | ML prediction — HTTP only (no direct imports) |
+| **Analytics/ML** | External Bounded context | `/analytics/*` | ML prediction — HTTP only (no direct imports) |
 
 ### DDD Structure
 

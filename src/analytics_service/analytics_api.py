@@ -17,6 +17,7 @@ from analytics_service.ml_data_store import (
     get_all_training_data,
     add_prediction,
     get_all_predictions,
+    get_model_state,
 )
 
 router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
@@ -123,7 +124,10 @@ async def list_training_data():
     Returns:
       - training_data: rows used to train the model (actual consumption)
       - predictions:   every prediction made (for accuracy tracking)
+      - model:         current model coefficients, intercept, R² (for regression line)
     """
+    model_state = get_model_state()
+
     return {
         "training_data": {
             "count": len(get_all_training_data()),
@@ -133,6 +137,7 @@ async def list_training_data():
             "count": len(get_all_predictions()),
             "rows": get_all_predictions(),
         },
+        "model": model_state if model_state else None,
     }
 
 

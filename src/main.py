@@ -41,16 +41,7 @@ logger = logging.getLogger("voltedge")
 app = FastAPI(
     title="VoltEdge Mobility MVP API",
     description=(
-        "VoltEdge Mobility MVP API — DDD-based architecture with 1 Bounded Context.\n\n"
-        "---\n"
-        "### Charging Session (Bounded Context)\n"
-        "- **Aggregate 1: Session** (SessionID as root) — State machine: Created → Charging → Completed → Rated → Invoiced.\n"
-        "- **Aggregate 2: InvoiceLine** (InvoiceLineID as root) — Tariff calculation and invoice generation.\n\n"
-        "### External Capability (Analytics/ML) — `/analytics/*`\n"
-        "- ML prediction (energy & revenue) offered as an **external API service**.\n"
-        "- The ML model is ISOLATED in `ml_model.py` — no direct imports from Session/Billing.\n"
-        "- The only way to use ML is via HTTP calls to `/analytics/` endpoints.\n\n"
-        "**Try `POST /auto-flow-with-ml`** to see the core flow call Analytics via HTTP!"
+        "VoltEdge Mobility MVP"
     ),
     version="1.0.4",
     docs_url="/docs",

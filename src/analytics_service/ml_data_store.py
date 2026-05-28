@@ -84,6 +84,17 @@ def init_db():
 
 # ── Training Data ──────────────────────────────────────────────
 
+def clear_training_data():
+    """Delete all training data and predictions. Used for re-seeding."""
+    init_db()
+    conn = _get_connection()
+    conn.execute("DELETE FROM training_data")
+    conn.execute("DELETE FROM predictions")
+    conn.execute("DELETE FROM model_state")
+    conn.commit()
+    conn.close()
+
+
 def training_data_exists() -> bool:
     """Return True if at least one training data row exists."""
     init_db()

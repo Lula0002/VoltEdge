@@ -31,6 +31,7 @@ from analytics_service.ml_data_store import (
     get_all_training_data,
     add_training_data,
     training_data_exists,
+    clear_training_data,
 )
 
 
@@ -57,15 +58,22 @@ _model_version = "v0.0.0"
 
 
 def _seed_db_if_empty():
-    """On first startup, populate the database with training data.
+    """Populate the database with training data.
 
     Priority:
       1. CSV from VOLTEDGE_ML_SEED_CSV env var
       2. CSV at  scripts/ml_seed_data.csv  (relative to project root)
       3. Hardcoded FALLBACK_SEED list above
 
+    Set env var  VOLTEDGE_ML_RESEED=1  to force re-seed from CSV on next startup
+    (the old database is cleared first).
+
     This ensures the model NEVER starts from zero.
     """
+    # Force re-seed if env var is set
+    if os.getenv("VOLTEDGE_ML_RESEED") == "1":
+        clear_training_data()
+
     if training_data_exists():
         return
 

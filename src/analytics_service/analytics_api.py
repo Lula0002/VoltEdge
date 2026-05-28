@@ -179,7 +179,7 @@ async def record_actual_endpoint(req: RecordActualRequest):
     }
 
 
-# ── Add Raw Training Data ─────────────────────────────────────
+# ── Training Data Endpoints (POST before GET for Swagger order) ─
 
 @router.post("/training-data")
 async def add_training_data_endpoint(req: AddTrainingDataRequest):
@@ -202,8 +202,6 @@ async def add_training_data_endpoint(req: AddTrainingDataRequest):
     }
 
 
-# ── GET Endpoints (PowerBI-friendly) ──────────────────────────
-
 @router.get("/training-data")
 async def list_training_data():
     """Return ALL training data points.
@@ -220,6 +218,8 @@ async def list_training_data():
         "data": data,
     }
 
+
+# ── Predictions & Model Parameters (PowerBI-friendly) ────────
 
 @router.get("/predictions")
 async def list_predictions(only_with_actual: bool = False):

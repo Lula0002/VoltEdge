@@ -7,6 +7,7 @@ can track accuracy over time.
 from __future__ import annotations
 
 import hashlib
+import math
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
@@ -149,11 +150,15 @@ async def list_revenue_data(
     for idx, row in enumerate(data):
         dynamic_rate = predict_price_rate(row["temperature"], row["hour_of_day"])
 
-        # Generate reproducible noise per row so points don't all overlap
+        # Generate reproducible gaussian noise (Box-Muller) so most points
+        # cluster near the trend line with ~5% clear anomalies
         seed_key = f"{row['temperature']}-{row['hour_of_day']}-{row['duration_minutes']}-{idx}"
         hash_bytes = hashlib.md5(seed_key.encode()).digest()
-        noise = round(((int.from_bytes(hash_bytes[:4], "big") / 0xFFFFFFFF) * 2 - 1) * 0.18, 3)
-        is_anomaly = abs(noise) > 0.14
+        h1 = int.from_bytes(hash_bytes[:4], "big") / 0xFFFFFFFF
+        h2 = int.from_bytes(hash_bytes[4:8], "big") / 0xFFFFFFFF
+        z1 = math.sqrt(-2.0 * math.log(h1 + 1e-10)) * math.cos(2.0 * math.pi * h2)
+        noise = round(z1 * 0.06, 3)  # std dev 0.06 → ~95% within ±0.12
+        is_anomaly = abs(noise) > 0.12
 
         result.append({
             "duration_minutes": row["duration_minutes"],

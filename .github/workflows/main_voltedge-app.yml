@@ -34,6 +34,12 @@ jobs:
           source antenv/bin/activate
           pip install -r requirements.txt
 
+      - name: Run unit tests with pytest
+        run: |
+          source antenv/bin/activate
+          pip install pytest httpx
+          python -m pytest tests -v --tb=short
+
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:

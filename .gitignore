@@ -33,8 +33,10 @@ Thumbs.db
 *.zip
 *.tar.gz
 
+# pytest cache
+.pytest_cache/
+
 # Pre-delivery cleanup — removed from git
-tests/
 postman/
 docs/
 liste.md

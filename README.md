@@ -1,30 +1,97 @@
-# VoltEdge Mobility MVP
+# VoltEdge Mobility — MVP Solution
 
-A **Domain-Driven Design** proof-of-concept for EV charging session management — from plug-in to invoice — deployed on Azure.
+A **Domain-Driven Design** proof-of-concept for EV charging session management — from plug-in to invoice — deployed on Azure with CI/CD.
 
 ---
 
-## What this project does
+## Table of Contents
 
-VoltEdge manages a charging session through a state machine with **two Aggregates** in one Bounded Context:
+- [Architecture](#architecture)
+- [Happy Path](#happy-path)
+- [Pricing Model](#pricing-model)
+- [Quick Start](#quick-start)
+- [API Endpoints](#api-endpoints)
+- [Full Flow Example](#full-flow-example)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Live Deployment](#live-deployment)
+- [Database](#database)
+- [Secrets Management](#secrets-management)
+- [License](#license)
 
-| Aggregate | Root | Responsibility |
-|-----------|------|---------------|
-| **Session** | SessionID | State machine: `Created → Charging → Completed → Rated → Invoiced` |
-| **InvoiceLine** | InvoiceLineID | Tariff calculation + invoice persistence |
+---
 
-A separate **Analytics/ML** service (external capability) predicts energy and revenue — accessible **only** via HTTP to prove service isolation.
+## Architecture
 
-### Pricing model
+All modules run in a **single Azure Web App** on one port, each with its own URL prefix:
+
+| Module | Bounded Context | URL prefix | Responsibility |
+|--------|----------------|------------|----------------|
+| **Session** | Aggregate 1 (Core) | `/sessions/*` | State machine: Created → Charging → Completed → Rated → Invoiced |
+| **InvoiceLine** | Aggregate 2 (Generic) | `/billing/*` | Tariff calculation + invoice generation |
+| **Analytics/ML** | External capability | `/analytics/*` | ML prediction — HTTP only (no direct imports) |
+
+### DDD Structure
+
+- **Charging Session** is **one** Bounded Context owning **two Aggregates**:
+  - **Aggregate 1:** `Session` — entity with **SessionID** as root, manages the charging state machine
+  - **Aggregate 2:** `InvoiceLine` — entity with **InvoiceLineID** as root, handles pricing and invoicing
+- Session and InvoiceLine communicate via direct Python imports (same Bounded Context).
+- Analytics/ML is an **external capability** — accessible **only** via HTTP (`/analytics/*`). No direct Python imports between core code and the ML model.
+
+---
+
+## Happy Path
+
+The Session aggregate follows a 5-step state machine:
+
+| Step | Endpoint | What happens |
+|------|----------|-------------|
+| 1. **Created** | `POST /sessions/start` | Session created with `charger_id` and `contract_id` |
+| 2. **Charging** | `POST /sessions/{id}/start-charging` | Charging begins |
+| 3. **Completed** | `POST /sessions/{id}/validate` | Meter data submitted (energy, duration, charging time) |
+| 4. **Rated** | `POST /sessions/{id}/rate` | Invoice line ID (UUID) assigned — **no price calculation** |
+| 5. **Invoiced** | `POST /sessions/{id}/invoice` | Price calculated via Tariff + OverstayPolicy, invoice persisted |
+
+### Flow diagram
+
+```
+Created → Charging → Completed → Rated → Invoiced
+```
+
+---
+
+## Pricing Model
 
 | Component | Rate | Paid when |
 |-----------|------|-----------|
-| Energy (Tariff) | 2,45 DKK/kWh | Always — core product |
-| Parking overstay (OverstayPolicy) | 15 DKK / 30 min | Only if car stays after charging + 10 min grace |
+| **Energy** (Tariff) | 2,45 DKK/kWh | **Always** — core product |
+| **Parking overstay** (OverstayPolicy) | 15 DKK / 30 min (0,50 DKK/min) | **Only if** car remains after charging + 10 min grace period |
+
+### Example: 25.5 kWh, 60 min total, 45 min charging
+
+```
+Energy:       25.5 kWh × 2,45 DKK/kWh  =  62,48 DKK
+Parking:      max(0, 60 − 45 − 10) × 0,50  =   2,50 DKK
+                                     Total  =  64,98 DKK
+```
+
+### Policy details
+
+- **Tariff**: A data class representing the energy rate (frozen, immutable). Always charged when energy is delivered.
+- **OverstayPolicy**: A separate penalty policy (not a tariff). Free to park while charging + 10 min grace period after charging ends. 15 DKK per 30 minutes after grace.
 
 ---
 
-## Quick start
+## Quick Start
+
+### Prerequisites
+
+- **Python 3.9+** installed
+- **Git** installed
+
+### Setup
 
 ```bash
 git clone https://github.com/Lula0002/VoltEdge.git
@@ -34,55 +101,20 @@ pip install -r src/requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 
-Swagger UI opens at [http://localhost:8000/docs](http://localhost:8000/docs).  
-The database (`voltedge.db`) is created automatically on first request.
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI.
 
-### Full flow (5 requests)
-
-```bash
-SID=$(curl -s -X POST http://localhost:8000/sessions/start \
-  -H "Content-Type: application/json" \
-  -d '{"charger_id":"charger-1","contract_id":"contract-1"}' \
-  | python3 -c "import json,sys;print(json.load(sys.stdin)['session_id'])")
-
-curl -s -X POST "http://localhost:8000/sessions/$SID/start-charging"
-
-curl -s -X POST "http://localhost:8000/sessions/$SID/validate" \
-  -H "Content-Type: application/json" \
-  -d '{"energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}'
-
-curl -s -X POST "http://localhost:8000/sessions/$SID/rate"
-
-curl -s -X POST "http://localhost:8000/sessions/$SID/invoice" | python3 -m json.tool
-```
-
-Or use the one-call demo:
-
-```bash
-curl -s -X POST http://localhost:8000/auto-flow-with-ml \
-  -H "Content-Type: application/json" \
-  -d '{"charger_id":"charger-1","contract_id":"contract-1","energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}'
-```
+> The SQLite database (`voltedge.db`) is created automatically in `src/` on app startup via `init_db()` — no manual setup needed. Delete the file to reset all data.
 
 ---
 
-## Tech stack
+## API Endpoints
 
-- **API:** Python (FastAPI) — Swagger/OpenAPI docs at `/docs`
-- **Database:** SQLite (auto-created on startup)
-- **Cloud:** Azure App Service
-- **ML:** Scikit-learn Linear Regression (external capability via HTTP)
-- **CI/CD:** GitHub Actions — build + deploy on push to `main`
+Full documentation with request/response schemas at [http://localhost:8000/docs](http://localhost:8000/docs).
 
----
-
-## API endpoints
+### Session endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| **Proof of API** | | |
-| POST | `/auto-flow-with-ml` | Full happy path + Analytics/ML via HTTP |
-| **Session** | | |
 | POST | `/sessions/start` | Create session → `Created` |
 | POST | `/sessions/{id}/start-charging` | Start charging → `Charging` |
 | POST | `/sessions/{id}/validate` | Submit meter data → `Completed` |
@@ -90,45 +122,207 @@ curl -s -X POST http://localhost:8000/auto-flow-with-ml \
 | POST | `/sessions/{id}/invoice` | Calculate price + persist invoice → `Invoiced` |
 | GET | `/sessions/` | List all sessions |
 | GET | `/sessions/{id}` | Get session details |
-| **Billing** | | |
+
+### Billing endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
 | GET | `/billing/invoices` | List all invoices |
-| **Analytics (external)** | | |
-| POST | `/analytics/predict-energy` | Predict kWh consumption |
-| POST | `/analytics/predict-revenue` | Predict revenue |
 
-Full documentation with request/response schemas at [http://localhost:8000/docs](http://localhost:8000/docs) (local) or the [live Swagger page](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs).
+### Analytics endpoints (external capability)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/analytics/predict-energy` | Predict kWh consumption via ML |
+| POST | `/analytics/predict-revenue` | Predict revenue via ML |
+
+### Demo endpoint
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/auto-flow-with-ml` | Full happy path + Analytics/ML call |
 
 ---
 
-## Project structure
+## Full Flow Example
+
+### Using curl
+
+```bash
+# Step 1: Start a session
+SID=$(curl -s -X POST http://localhost:8000/sessions/start \
+  -H "Content-Type: application/json" \
+  -d '{"charger_id":"charger-1","contract_id":"contract-1"}' \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['session_id'])")
+
+# Step 2: Start charging
+curl -s -X POST "http://localhost:8000/sessions/$SID/start-charging"
+
+# Step 3: Validate (submit meter data)
+curl -s -X POST "http://localhost:8000/sessions/$SID/validate" \
+  -H "Content-Type: application/json" \
+  -d '{"energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}'
+
+# Step 4: Rate (assign invoice line ID — no price calculation)
+curl -s -X POST "http://localhost:8000/sessions/$SID/rate"
+
+# Step 5: Invoice (calculate price + persist)
+curl -s -X POST "http://localhost:8000/sessions/$SID/invoice" | python3 -m json.tool
+```
+
+### One-call demo
+
+```bash
+curl -s -X POST http://localhost:8000/auto-flow-with-ml \
+  -H "Content-Type: application/json" \
+  -d '{"charger_id":"charger-1","contract_id":"contract-1","energy_delivered":25.5,"duration_minutes":60,"charging_duration_minutes":45}' | python3 -m json.tool
+```
+
+### Example invoice response
+
+```json
+{
+  "invoice_line_id": "abc-123-def",
+  "session_id": "uuid-here",
+  "amount": 64.98,
+  "currency": "DKK",
+  "breakdown": {
+    "charges": {
+      "energy": {
+        "amount": 62.48,
+        "rate": 2.45,
+        "unit": "DKK/kWh",
+        "kwh": 25.5
+      },
+      "parking_overstay": {
+        "amount": 2.5,
+        "rate": 0.5,
+        "unit": "DKK/min",
+        "grace_minutes": 10,
+        "billable_minutes": 5,
+        "label": "15 DKK / 30 min"
+      }
+    },
+    "session": {
+      "total_duration_minutes": 60,
+      "charging_duration_minutes": 45,
+      "parking_duration_minutes": 15
+    }
+  },
+  "timestamp": "2026-05-28T10:00:00Z"
+}
+```
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| **API framework** | Python (FastAPI) with Swagger/OpenAPI docs |
+| **Database** | SQLite (local + production) — zero-config, auto-created |
+| **Cloud** | Microsoft Azure (App Service) |
+| **ML** | Scikit-learn Linear Regression (external capability via HTTP) |
+| **CI/CD** | GitHub Actions — automatic build, test, and deploy on push to `main` |
+| **Integration** | Session/Billing calls Analytics via HTTP (httpx) — proving service isolation |
+| **BI-readiness** | GET endpoints (`/sessions/`, `/billing/invoices`) callable from Power BI, Excel |
+| **CORS** | Enabled across all endpoints |
+| **Testing** | Pytest with FastAPI TestClient — unit and integration tests |
+
+---
+
+## Project Structure
 
 ```
-src/
-├── main.py                       # FastAPI entry point
-├── session_service/              # Aggregate 1: Session
-│   ├── session_api.py            # Endpoints + state machine logic
-├── billing_service/              # Aggregate 2: InvoiceLine
-│   ├── billing_api.py            # Invoice list endpoint
-│   ├── tariff.py                 # Tariff + OverstayPolicy
-│   ├── rating_service.py         # Domain service
-├── analytics_service/            # External capability (HTTP only)
-│   ├── analytics_api.py          # ML prediction endpoints
-│   ├── ml_model.py               # Linear regression (isolated)
-└── shared/
-    ├── events.py                 # Shared event models
-    ├── database.py               # SQLite helper
+├── src/
+│   ├── main.py                       # FastAPI entry point (Session, Billing, Analytics)
+│   ├── requirements.txt              # Python dependencies
+│   ├── session_service/
+│   │   ├── session_api.py            # Aggregate 1: Session endpoints + state machine
+│   │   └── __init__.py
+│   ├── billing_service/
+│   │   ├── billing_api.py            # Invoice list endpoint
+│   │   ├── tariff.py                 # Tariff (energy rate) + OverstayPolicy (parking penalty)
+│   │   ├── rating_service.py         # Domain service: combines Tariff + OverstayPolicy
+│   │   └── __init__.py
+│   ├── analytics_service/
+│   │   ├── analytics_api.py          # ML prediction endpoints
+│   │   ├── ml_model.py               # Linear regression model (isolated, no core imports)
+│   │   └── __init__.py
+│   └── shared/
+│       ├── events.py                 # Shared event models (SessionData, events)
+│       ├── database.py               # SQLite database helper + schema init
+│       └── __init__.py
+├── tests/
+│   ├── test_session_service.py       # Session state machine integration tests
+│   ├── test_billing_service.py       # Tariff/RatingService domain logic tests
+│   └── test_analytics_service.py     # ML prediction API tests
+├── .github/workflows/
+│   └── main_voltedge-app.yml         # CI/CD pipeline (build → test → deploy)
+├── .gitignore
+└── README.md
 ```
 
 ---
 
-## Live deployment
+## CI/CD Pipeline
 
-[https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)  
-Swagger: [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs)
+The GitHub Actions workflow (`.github/workflows/main_voltedge-app.yml`) runs on every push to `main` and can be triggered manually via `workflow_dispatch`.
+
+### Pipeline steps
+
+1. **Checkout** — source code checkout
+2. **Python 3.12 setup** — environment setup
+3. **Install dependencies** — `pip install -r requirements.txt`
+4. **Run tests** — `pytest tests/ -v --tb=short` (unit + integration tests)
+5. **Upload artifact** — prepare deployment package
+6. **Deploy to Azure** — deploy to Azure Web App using publish profile credentials
+
+### Test coverage
+
+- **Unit tests**: Pure domain logic (Tariff, OverstayPolicy, RatingService) — no HTTP, no database
+- **Integration tests**: Full API flow via FastAPI TestClient (session state machine, analytics endpoints)
+
+### Rollback
+
+If deployment fails, the previous version remains untouched on Azure. Database is created automatically at app startup — no migration step required.
 
 ---
 
-## Who maintains this
+## Live Deployment
+
+**Production URL:** [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net)
+
+**Swagger UI:** [https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs](https://voltedge-app-fqgdacaadyd9axds.germanywestcentral-01.azurewebsites.net/docs)
+
+---
+
+## Database
+
+The project uses **SQLite** — both locally and in production. No setup required.
+
+- Auto-created at `src/voltedge.db` on first app startup
+- To reset: delete `voltedge.db` and restart the server
+- MySQL is supported via `DATABASE_URL=mysql://...` but not currently in use
+
+### Tables
+
+- **sessions** — stores charging session data (state machine tracking, energy, duration, cost)
+- **invoices** — stores generated invoice lines (amount, currency, status)
+
+---
+
+## Secrets Management
+
+- `src/*/.env.example` — templates for local environment variables
+- GitHub Secrets: Azure publish profile credentials configured via Deployment Center
+- No secrets in source code
+- Database uses SQLite — no credentials needed
+- `*.db` is in `.gitignore` — production database never committed
+
+---
+
+## License
 
 Developed as part of the 6th semester exam project at Copenhagen Business Academy.
 

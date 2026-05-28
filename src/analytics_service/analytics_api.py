@@ -342,7 +342,7 @@ async def predict_price_rate_endpoint(req: PredictPriceRateRequest):
             "hour_of_day": req.hour_of_day,
         },
         "predicted_price_rate_dkk_per_kwh": rate,
-        "note": "Prisen varierer med vejret: solskin = billigere, gråt/regn = dyrere",
+        "note": "Price varies with weather: sunny = cheaper, cloudy/rainy = more expensive",
     }
 
 

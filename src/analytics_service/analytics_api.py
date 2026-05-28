@@ -13,6 +13,7 @@ from analytics_service.ml_model import (
     predict_energy_kwh,
     get_model_info,
 )
+from analytics_service.ml_data_store import get_all_training_data
 
 router = APIRouter(prefix="/analytics", tags=["Business Intelligence"])
 
@@ -85,6 +86,22 @@ def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_d
             "version": model_info["model_version"],
             "training_count": model_info["training_count"],
         },
+    }
+
+
+# ── Training Data (read-only, for verifying seed data) ───────
+
+@router.get("/training-data")
+async def list_training_data():
+    """Return all training data in the ML database.
+
+    Use this to verify that seed data was loaded correctly.
+    PowerBI can consume this endpoint via Power Query (Web connector).
+    """
+    data = get_all_training_data()
+    return {
+        "count": len(data),
+        "data": data,
     }
 
 

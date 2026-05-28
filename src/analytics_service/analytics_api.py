@@ -6,7 +6,7 @@ request/response and calls to the model.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from analytics_service.ml_model import (
@@ -34,23 +34,17 @@ class RevenueRequest(BaseModel):
     num_chargers: int = Field(default=10, description="Number of chargers")
 
 
-# ── Endpoints ────────────────────────────────────────────────
+# ── Shared logic ──────────────────────────────────────────────
 
-@router.post("/predict-energy")
-async def predict_energy(req: PredictEnergyRequest):
-    """Predict future energy consumption (kWh) based on duration, weather and time of day.
-
-    ML model: Linear regression trained on bootstrapped + accumulated real data.
-    Features: duration (min), temperature (°C), hour of day.
-    """
+def _build_energy_response(duration_minutes: int, temperature: float, hour_of_day: int):
+    """Run prediction and build the response dict."""
     model_info = get_model_info()
-    predicted_kwh = predict_energy_kwh(req.duration_minutes, req.temperature, req.hour_of_day)
-
+    predicted_kwh = predict_energy_kwh(duration_minutes, temperature, hour_of_day)
     return {
         "input": {
-            "duration_minutes": req.duration_minutes,
-            "temperature_celsius": req.temperature,
-            "hour_of_day": req.hour_of_day,
+            "duration_minutes": duration_minutes,
+            "temperature_celsius": temperature,
+            "hour_of_day": hour_of_day,
         },
         "predicted_energy_kwh": round(predicted_kwh, 2),
         "model": {
@@ -59,6 +53,51 @@ async def predict_energy(req: PredictEnergyRequest):
             "training_count": model_info["training_count"],
         },
     }
+
+
+def _build_revenue_response(duration_minutes: int, temperature: float, hour_of_day: int,
+                            kwh_price: float, num_sessions: int, num_chargers: int):
+    """Run revenue prediction and build the response dict."""
+    model_info = get_model_info()
+    predicted_kwh_per_session = predict_energy_kwh(duration_minutes, temperature, hour_of_day)
+
+    total_kwh = predicted_kwh_per_session * num_sessions
+    total_cost_dkk = round(total_kwh * kwh_price, 2)
+    revenue_per_charger = round(total_cost_dkk / num_chargers, 2)
+
+    return {
+        "input": {
+            "duration_minutes": duration_minutes,
+            "temperature_celsius": temperature,
+            "kwh_price_dkk": kwh_price,
+            "num_sessions": num_sessions,
+            "num_chargers": num_chargers,
+        },
+        "prediction": {
+            "predicted_kwh_per_session": round(predicted_kwh_per_session, 2),
+            "total_predicted_kwh": round(total_kwh, 2),
+            "total_predicted_cost_dkk": total_cost_dkk,
+            "revenue_per_charger_dkk": revenue_per_charger,
+            "avg_revenue_per_session_dkk": round(total_cost_dkk / num_sessions, 2),
+        },
+        "model": {
+            "type": "LinearRegression",
+            "version": model_info["model_version"],
+            "training_count": model_info["training_count"],
+        },
+    }
+
+
+# ── POST Endpoints ───────────────────────────────────────────
+
+@router.post("/predict-energy")
+async def predict_energy(req: PredictEnergyRequest):
+    """Predict future energy consumption (kWh) based on duration, weather and time of day.
+
+    ML model: Linear regression trained on bootstrapped + accumulated real data.
+    Features: duration (min), temperature (°C), hour of day.
+    """
+    return _build_energy_response(req.duration_minutes, req.temperature, req.hour_of_day)
 
 
 @router.post("/predict-revenue")
@@ -70,34 +109,43 @@ async def predict_revenue(req: RevenueRequest):
       - Expected costs (kWh x kWh price)
       - Expected revenue across all chargers and sessions
     """
-    model_info = get_model_info()
-    predicted_kwh_per_session = predict_energy_kwh(req.duration_minutes, req.temperature, req.hour_of_day)
+    return _build_revenue_response(
+        req.duration_minutes, req.temperature, req.hour_of_day,
+        req.kwh_price, req.num_sessions, req.num_chargers,
+    )
 
-    # Price calculation
-    total_kwh = predicted_kwh_per_session * req.num_sessions
-    total_cost_dkk = round(total_kwh * req.kwh_price, 2)
 
-    # Revenue per charger
-    revenue_per_charger = round(total_cost_dkk / req.num_chargers, 2)
+# ── GET Endpoints (query params for easy browser/PowerBI use) ─
 
-    return {
-        "input": {
-            "duration_minutes": req.duration_minutes,
-            "temperature_celsius": req.temperature,
-            "kwh_price_dkk": req.kwh_price,
-            "num_sessions": req.num_sessions,
-            "num_chargers": req.num_chargers,
-        },
-        "prediction": {
-            "predicted_kwh_per_session": round(predicted_kwh_per_session, 2),
-            "total_predicted_kwh": round(total_kwh, 2),
-            "total_predicted_cost_dkk": total_cost_dkk,
-            "revenue_per_charger_dkk": revenue_per_charger,
-            "avg_revenue_per_session_dkk": round(total_cost_dkk / req.num_sessions, 2),
-        },
-        "model": {
-            "type": "LinearRegression",
-            "version": model_info["model_version"],
-            "training_count": model_info["training_count"],
-        },
-    }
+@router.get("/predict-energy")
+async def predict_energy_get(
+    duration_minutes: int = Query(default=60, description="Expected charging time in minutes", ge=1),
+    temperature: float = Query(default=15, description="Expected temperature in °C"),
+    hour_of_day: int = Query(default=14, description="Time of day (0-23)", ge=0, le=23),
+):
+    """Predict future energy consumption (kWh) — GET version with query parameters.
+
+    Same as POST /predict-energy but accepts query params instead of a request body.
+    Useful for quick testing in a browser or Power BI Web connector.
+    """
+    return _build_energy_response(duration_minutes, temperature, hour_of_day)
+
+
+@router.get("/predict-revenue")
+async def predict_revenue_get(
+    duration_minutes: int = Query(default=60, description="Average charging time per session", ge=1),
+    temperature: float = Query(default=15, description="Expected average temperature"),
+    hour_of_day: int = Query(default=14, description="Typical time of day", ge=0, le=23),
+    kwh_price: float = Query(default=2.45, description="Expected kWh price in DKK", gt=0),
+    num_sessions: int = Query(default=100, description="Expected number of charging sessions", ge=1),
+    num_chargers: int = Query(default=10, description="Number of chargers", ge=1),
+):
+    """Predict future revenue — GET version with query parameters.
+
+    Same as POST /predict-revenue but accepts query params instead of a request body.
+    Useful for quick testing in a browser or Power BI Web connector.
+    """
+    return _build_revenue_response(
+        duration_minutes, temperature, hour_of_day,
+        kwh_price, num_sessions, num_chargers,
+    )

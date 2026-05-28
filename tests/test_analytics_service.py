@@ -63,3 +63,42 @@ def test_3_predict_revenue():
     data = response.json()
     assert data["prediction"]["total_predicted_cost_dkk"] > 0
     assert data["prediction"]["revenue_per_charger_dkk"] > 0
+
+
+def test_4_predict_energy_get():
+    """GET predict-energy returns same result as POST"""
+    response = client.get("/analytics/predict-energy", params={
+        "duration_minutes": 60,
+        "temperature": 20,
+        "hour_of_day": 14,
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["predicted_energy_kwh"] > 0
+    assert data["input"]["duration_minutes"] == 60
+
+
+def test_5_predict_revenue_get():
+    """GET predict-revenue returns same result as POST"""
+    response = client.get("/analytics/predict-revenue", params={
+        "duration_minutes": 60,
+        "temperature": 15,
+        "hour_of_day": 14,
+        "kwh_price": 2.45,
+        "num_sessions": 100,
+        "num_chargers": 10,
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["prediction"]["total_predicted_cost_dkk"] > 0
+    assert data["prediction"]["revenue_per_charger_dkk"] > 0
+
+
+def test_6_predict_energy_get_equals_post():
+    """GET and POST return identical predictions for same inputs"""
+    params = {"duration_minutes": 90, "temperature": 10, "hour_of_day": 8}
+    post_resp = client.post("/analytics/predict-energy", json=params)
+    get_resp = client.get("/analytics/predict-energy", params=params)
+    assert post_resp.status_code == 200
+    assert get_resp.status_code == 200
+    assert post_resp.json()["predicted_energy_kwh"] == get_resp.json()["predicted_energy_kwh"]

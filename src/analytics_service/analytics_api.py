@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
@@ -172,6 +173,81 @@ async def list_revenue_data(
             "is_anomaly": is_anomaly,
         })
     return result
+
+
+# ── 12-Month Revenue Forecast (Power BI) ─────────────────────
+
+@router.get("/forecast-12-months", include_in_schema=False)
+async def forecast_12_months(
+    num_chargers: int = Query(default=10, description="Number of chargers in operation", ge=1),
+    avg_daily_sessions_per_charger: float = Query(default=2.0, description="Average sessions per charger per day", ge=0.1),
+    avg_duration_minutes: int = Query(default=60, description="Average session duration in minutes", ge=1),
+    parking_rate: float = Query(default=0.50, description="DKK per minute overstay parking fee"),
+    free_parking_minutes: int = Query(default=10, description="Free parking minutes before tariff applies"),
+    overstay_rate: float = Query(default=0.35, description="Fraction of sessions that incur overstay parking (0-1)"),
+    growth_rate_pct: float = Query(default=1.5, description="Monthly growth in session volume (%)"),
+):
+    """Generate a 12-month revenue forecast for Power BI dashboards.
+
+    Uses the trained ML models to predict future revenue based on:
+      - Seasonal temperature patterns (affects dynamic price rate)
+      - Predicted energy consumption per session
+      - Parking overstay tariff (DKK/min beyond free minutes)
+
+    Two revenue streams are calculated:
+      1. **Charging revenue** — predicted_kWh × ML-predicted price rate
+      2. **Parking revenue** — overstay_minutes × parking_rate × sessions with overstay
+
+    The forecast assumes Danish seasonal temperatures and afternoon-peak charging.
+    Returns a flat JSON array — one object per month — suitable for Power BI.
+    """
+    import calendar
+
+    # Danish monthly average temperatures (°C)
+    MONTHLY_TEMPS = [0, 1, 5, 10, 15, 20, 22, 21, 16, 11, 5, 1]
+
+    # Determine start month (next month from now)
+    now = datetime.now(timezone.utc)
+    forecast = []
+    for i in range(12):
+        m = (now.month + i) % 12
+        year = now.year + (now.month + i) // 12
+
+        temp = MONTHLY_TEMPS[m]
+        hour = 14  # typical afternoon charging
+
+        # Growing session volume
+        growth = 1 + (growth_rate_pct / 100.0) * i
+        sessions_per_charger = avg_daily_sessions_per_charger * growth
+        total_sessions = round(sessions_per_charger * num_chargers * 30)
+
+        # ML predictions
+        predicted_kwh = predict_energy_kwh(avg_duration_minutes, temp, hour)
+        price_rate = predict_price_rate(temp, hour)
+
+        # Charging revenue
+        total_energy = round(predicted_kwh * total_sessions, 1)
+        charging_revenue = round(total_energy * price_rate, 2)
+
+        # Parking overstay revenue
+        billable_parking = max(0, avg_duration_minutes - free_parking_minutes)
+        sessions_with_overstay = round(total_sessions * overstay_rate)
+        parking_revenue = round(billable_parking * parking_rate * sessions_with_overstay, 2)
+
+        forecast.append({
+            "month": calendar.month_abbr[m + 1],
+            "year": year,
+            "month_num": m + 1,
+            "avg_temperature_celsius": temp,
+            "total_sessions": total_sessions,
+            "total_energy_kwh": total_energy,
+            "avg_price_per_kwh": price_rate,
+            "charging_revenue_dkk": charging_revenue,
+            "parking_revenue_dkk": parking_revenue,
+            "total_revenue_dkk": round(charging_revenue + parking_revenue, 2),
+        })
+
+    return forecast
 
 
 # ── POST Endpoints ───────────────────────────────────────────

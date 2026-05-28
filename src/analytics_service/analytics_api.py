@@ -234,10 +234,12 @@ async def forecast_12_months(
         sessions_with_overstay = round(total_sessions * overstay_rate)
         parking_revenue = round(billable_parking * parking_rate * sessions_with_overstay, 2)
 
+        month_num = m + 1
         forecast.append({
-            "month": calendar.month_abbr[m + 1],
+            "year_month": f"{year}-{month_num:02d}",
+            "month": calendar.month_abbr[month_num],
             "year": year,
-            "month_num": m + 1,
+            "month_num": month_num,
             "avg_temperature_celsius": temp,
             "total_sessions": total_sessions,
             "total_energy_kwh": total_energy,

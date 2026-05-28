@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from analytics_service.ml_model import (
     predict_energy_kwh,
+    predict_price_rate,
     get_model_info,
 )
 from analytics_service.ml_data_store import (
@@ -31,11 +32,16 @@ class PredictEnergyRequest(BaseModel):
     hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
 
 
+class PredictPriceRateRequest(BaseModel):
+    temperature: float = Field(default=15, description="Expected temperature in °C", examples=[15])
+    hour_of_day: int = Field(default=14, description="Time of day (0-23)", examples=[14])
+
+
 class RevenueRequest(BaseModel):
     duration_minutes: int = Field(default=60, description="Average charging time per session")
     temperature: float = Field(default=15, description="Expected average temperature")
     hour_of_day: int = Field(default=14, description="Typical time of day")
-    kwh_price: float = Field(default=2.45, description="Expected kWh price in DKK", examples=[2.45])
+    kwh_price: float = Field(default=2.45, description="Expected kWh price in DKK — use ML predict-price-rate for dynamic pricing", examples=[2.45])
     num_sessions: int = Field(default=100, description="Expected number of charging sessions")
     num_chargers: int = Field(default=10, description="Number of chargers")
 
@@ -249,3 +255,49 @@ async def predict_revenue_get(
         duration_minutes, temperature, hour_of_day,
         kwh_price, num_sessions, num_chargers,
     )
+
+
+# ── Price Rate Prediction ─────────────────────────────────────
+
+@router.post("/predict-price-rate")
+async def predict_price_rate_endpoint(req: PredictPriceRateRequest):
+    """Predict the price rate (DKK/kWh) based on weather and time of day.
+
+    Business logic:
+      - SOLSKIN/varmt → mere solenergi → lavere pris pr. kWh
+      - GRÅT/koldt/regn → mindre vedvarende energi → højere pris pr. kWh
+      - Myldretid (morgen/aften) → højere pris (efterspørgsel)
+
+    ML model: Linear regression trained on historical price data.
+    Features: temperature (°C), hour of day.
+    """
+    rate = predict_price_rate(req.temperature, req.hour_of_day)
+    return {
+        "input": {
+            "temperature_celsius": req.temperature,
+            "hour_of_day": req.hour_of_day,
+        },
+        "predicted_price_rate_dkk_per_kwh": rate,
+        "note": "Prisen varierer med vejret: solskin = billigere, gråt/regn = dyrere",
+    }
+
+
+@router.get("/predict-price-rate")
+async def predict_price_rate_get(
+    temperature: float = Query(default=15, description="Expected temperature in °C"),
+    hour_of_day: int = Query(default=14, description="Time of day (0-23)", ge=0, le=23),
+):
+    """Predict the price rate (DKK/kWh) — GET version with query parameters.
+
+    Same as POST /predict-price-rate but accepts query params.
+    Useful for quick testing in a browser or Power BI Web connector.
+    """
+    rate = predict_price_rate(temperature, hour_of_day)
+    return {
+        "input": {
+            "temperature_celsius": temperature,
+            "hour_of_day": hour_of_day,
+        },
+        "predicted_price_rate_dkk_per_kwh": rate,
+        "note": "Prisen varierer med vejret: solskin = billigere, gråt/regn = dyrere",
+    }

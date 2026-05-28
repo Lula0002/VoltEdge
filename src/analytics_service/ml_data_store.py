@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS model_state (
     intercept        REAL    NOT NULL,
     r2_score         REAL,
     training_count   INTEGER NOT NULL DEFAULT 0,
+    schema_version   INTEGER NOT NULL DEFAULT 0,
     trained_at       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -222,14 +223,15 @@ def save_model_state(
     intercept: float,
     r2_score: Optional[float],
     training_count: int,
+    schema_version: int = 0,
 ):
     """Save the current model state (overwrites previous)."""
     init_db()
     conn = _get_connection()
     conn.execute("DELETE FROM model_state")  # keep only latest
     conn.execute(
-        "INSERT INTO model_state (slope, intercept, r2_score, training_count) VALUES (?, ?, ?, ?)",
-        (str(coefficients), intercept, r2_score, training_count),
+        "INSERT INTO model_state (slope, intercept, r2_score, training_count, schema_version) VALUES (?, ?, ?, ?, ?)",
+        (str(coefficients), intercept, r2_score, training_count, schema_version),
     )
     conn.commit()
     conn.close()
@@ -250,3 +252,14 @@ def get_model_state() -> Optional[dict]:
     # Parse the stored string back to a list of floats
     result["coefficients"] = ast.literal_eval(result.pop("slope"))
     return result
+
+
+def get_stored_schema_version() -> int:
+    """Return the schema version stored in model_state, or 0 if none."""
+    init_db()
+    conn = _get_connection()
+    row = conn.execute(
+        "SELECT schema_version FROM model_state ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return row["schema_version"] if row else 0
